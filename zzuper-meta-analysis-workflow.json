@@ -249,22 +249,15 @@
     },
     {
       "parameters": {
-        "url": "=https://graph.facebook.com/v21.0/{{ $json.videoId }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "fields",
-              "value": "source"
-            }
-          ]
-        },
+        "url": "={{ $json.permalink_url }}",
         "options": {
           "response": {
             "responseFormat": "file",
             "responsePropertyName": "video"
+          },
+          "redirect": {
+            "followRedirects": true,
+            "maxRedirects": 5
           }
         },
         "continueOnFail": true
@@ -274,11 +267,6 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [2300, 200],
-      "credentials": {
-        "httpHeaderAuth": {
-          "name": "Header Auth account 4"
-        }
-      },
       "onError": "continue"
     },
     {
@@ -876,7 +864,7 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2025-12-29T16:15:00.000Z",
+  "updatedAt": "2025-12-29T16:30:00.000Z",
   "versionId": "1"
 }
 
