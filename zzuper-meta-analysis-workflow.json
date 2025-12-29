@@ -165,7 +165,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Check if post is a video\n// Note: Since we removed 'type' and 'attachments' fields due to API deprecation,\n// we'll determine if it's a video by checking if video data exists later\n// For now, we'll set isVideo to false and check in Get Video URL node\nconst post = $input.first().json;\n\n// We can't determine if it's a video from the current fields\n// The Get Video URL node will handle this and set isVideo accordingly\nlet isVideo = false;\nlet videoId = null;\n\n// If we have a permalink_url, we can check if it contains video indicators\n// But for now, we'll let the Get Video URL node determine this\n\nreturn {\n  json: {\n    ...post,\n    isVideo,\n    videoId\n  }\n};"
+        "jsCode": "// Check if post is a video\n// Use post ID as videoId - we'll try to fetch video metadata for all posts\n// If it's not a video, the API will return an error which we'll handle gracefully\nconst post = $input.first().json;\n\n// Use post ID as videoId - this allows us to try fetching video metadata\n// The Get Video URL node will fail gracefully for non-video posts\nlet isVideo = false;\nlet videoId = post.id || null;\n\nreturn {\n  json: {\n    ...post,\n    isVideo,\n    videoId\n  }\n};"
       },
       "id": "check-if-video",
       "name": "Check If Video",
@@ -175,7 +175,7 @@
     },
     {
       "parameters": {
-        "url": "=https://graph.facebook.com/v21.0/{{ $json.videoId }}",
+        "url": "=https://graph.facebook.com/v21.0/{{ $json.videoId || $json.id }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendQuery": true,
@@ -672,7 +672,7 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2025-12-29T15:05:00.000Z",
+  "updatedAt": "2025-12-29T15:10:00.000Z",
   "versionId": "1"
 }
 
