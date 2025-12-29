@@ -1,0 +1,47 @@
+name: Update N8N Workflow
+
+on:
+  push:
+    paths:
+      - 'zzuper-meta-analysis-workflow.json'
+    branches:
+      - main
+
+jobs:
+  update-n8n:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Update N8N Workflow
+        env:
+          N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+          N8N_BASE_URL: ${{ secrets.N8N_BASE_URL }}
+          N8N_WORKFLOW_ID: ${{ secrets.N8N_WORKFLOW_ID }}
+        run: |
+          echo "Updating N8N workflow..."
+          
+          # Read workflow JSON
+          WORKFLOW_JSON=$(cat zzuper-meta-analysis-workflow.json)
+          
+          # Update workflow via N8N API
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
+            -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "${WORKFLOW_JSON}" \
+            "${N8N_BASE_URL}/api/v1/workflows/${N8N_WORKFLOW_ID}")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 201 ]; then
+            echo "✅ Successfully updated N8N workflow"
+            echo "$BODY"
+          else
+            echo "❌ Failed to update N8N workflow"
+            echo "HTTP Code: $HTTP_CODE"
+            echo "Response: $BODY"
+            exit 1
+          fi
+
