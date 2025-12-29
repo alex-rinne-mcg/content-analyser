@@ -165,16 +165,6 @@
     },
     {
       "parameters": {
-        "jsCode": "// Filter Engagement: Pass through all items for now\n// This filter can be re-enabled later with proper threshold\nconst items = $input.all();\n\n// For now, pass all items through\n// TODO: Re-enable filtering when metrics are confirmed to be working\n// Example: return items.filter(item => (item.json.metrics?.impressions || 0) >= 100);\n\nreturn items;"
-      },
-      "id": "filter-engagement",
-      "name": "Filter Engagement",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1650, 300]
-    },
-    {
-      "parameters": {
         "jsCode": "// Check if post is a video\n// Note: Since we removed 'type' and 'attachments' fields due to API deprecation,\n// we'll determine if it's a video by checking if video data exists later\n// For now, we'll set isVideo to false and check in Get Video URL node\nconst post = $input.first().json;\n\n// We can't determine if it's a video from the current fields\n// The Get Video URL node will handle this and set isVideo accordingly\nlet isVideo = false;\nlet videoId = null;\n\n// If we have a permalink_url, we can check if it contains video indicators\n// But for now, we'll let the Get Video URL node determine this\n\nreturn {\n  json: {\n    ...post,\n    isVideo,\n    videoId\n  }\n};"
       },
       "id": "check-if-video",
@@ -557,17 +547,6 @@
       "main": [
         [
           {
-            "node": "Filter Engagement",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Filter Engagement": {
-      "main": [
-        [
-          {
             "node": "Check If Video",
             "type": "main",
             "index": 0
@@ -693,7 +672,7 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2025-12-29T15:00:00.000Z",
+  "updatedAt": "2025-12-29T15:05:00.000Z",
   "versionId": "1"
 }
 
