@@ -28,6 +28,31 @@
         },
         "sheetName": {
           "__rl": true,
+          "value": "AI Config",
+          "mode": "name"
+        }
+      },
+      "id": "read-ai-config",
+      "name": "Read AI Config",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [250, 500],
+      "credentials": {
+        "googleServiceAccount": {
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "1ye1nbaT4GyREOJsWuiXVavc_nvXHcDMLU7hqwCqapqY",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
           "value": "Tracker",
           "mode": "name"
         },
@@ -185,6 +210,16 @@
     },
     {
       "parameters": {
+        "jsCode": "// Build dynamic AI prompt from config sheet\nconst posts = $input.all();\n\n// Get AI config - use try/catch in case sheet doesn't exist yet\nlet config = {};\ntry {\n  const configRows = $('Read AI Config').all();\n  configRows.forEach(row => {\n    const key = row.json['Config Key'];\n    const value = row.json['Value'];\n    if (key && value) {\n      config[key] = value;\n    }\n  });\n} catch (error) {\n  console.log('AI Config sheet not found, using defaults');\n}\n\n// Default values\nconst defaults = {\n  video_analysis_focus: 'Hook effectiveness (first 3 seconds), Pacing and retention, Visual storytelling, Audio impact, CTA timing',\n  static_analysis_focus: 'Copy hook strength, Visual hierarchy, CTA clarity, Format effectiveness, Engagement triggers',\n  audience_context: 'ZZP\\'ers (Dutch independent contractors) aged 25-55. Value independence, price-conscious, skeptical of insurance complexity. Pain points: fear of income loss, confusion about options.',\n  business_context: 'ZZUPER positioning: \"de noodbuffer voor eigen baas\". Challenger brand disrupting traditional disability insurance. Key differentiators: transparent pricing (€39.85/month), no medical exam, lump-sum payouts, flexible cancellation. Current challenge: 97.1% awareness-to-consideration drop-off.',\n  sector_context: 'Four sectors: Bouw (construction, 40%, high injury risk), Transport (25%, long hours), Zorg (healthcare, 20%, burnout), Techniek (technical, 15%, equipment injuries)',\n  output_format: 'JSON with detailed string descriptions',\n  additional_instructions: 'Identify ZZUPER value props: affordable, no medical exam, flexible cancellation, lump-sum payouts. Assess tone: fear-based vs empowerment-based. Flag if messaging could increase drop-off.',\n  tone_preference: 'Professional but accessible, actionable insights for marketing team'\n};\n\n// Merge config with defaults\nObject.keys(defaults).forEach(key => {\n  if (!config[key]) config[key] = defaults[key];\n});\n\n// Build prompt for each post\nreturn posts.map(item => {\n  const post = item.json;\n  const isVideo = post.isVideo || false;\n  \n  const analysisFocus = isVideo ? \n    config.video_analysis_focus : \n    config.static_analysis_focus;\n  \n  const prompt = `Analyze this ZZUPER Facebook post and provide insights in JSON format.\n\nPost Details:\n- ID: ${post.id}\n- Type: ${isVideo ? 'Video' : 'Non-Video'}\n- Created: ${post.created_time}\n- Message: ${post.message || 'No text'}\n- URL: ${post.permalink_url}\n\nPerformance Metrics:\n- Impressions: ${post.metrics.impressions}\n- Reach: ${post.metrics.reach}\n- Reactions: ${post.metrics.reactions}\n- Comments: ${post.metrics.comments}\n- Shares: ${post.metrics.shares}\n- Clicks: ${post.metrics.clicks}\n- Performance Score: ${post.performanceScore}/10\n- Category: ${post.category}\n\n${isVideo ? `Video URL: ${post.source || 'N/A'}\\nVideo Views: ${post.metrics.videoViews || 0}` : ''}\n\n=== AUDIENCE CONTEXT ===\n${config.audience_context}\n\n=== BUSINESS CONTEXT ===\n${config.business_context}\n\n=== SECTOR CONTEXT ===\n${config.sector_context}\n\n=== ANALYSIS FOCUS ===\n${analysisFocus}\n\n=== ADDITIONAL INSTRUCTIONS ===\n${config.additional_instructions}\n\nTone: ${config.tone_preference}\n\nReturn a JSON object with these fields:\n{\n  \"hookEffectiveness\": \"Assess opening impact with specific examples\",\n  \"pacingRetention\": \"Evaluate flow and momentum (video only, N/A for static)\",\n  \"completionFactors\": \"What drives viewers to finish (video only, N/A for static)\",\n  \"visualStorytelling\": \"Analyze visual narrative and composition\",\n  \"audioImpact\": \"Evaluate music/voice effectiveness (video only, N/A for static)\",\n  \"copyEffectiveness\": \"Assess message clarity, audience relevance, business alignment\",\n  \"shareabilityFactors\": \"What makes this shareable within ZZP'er community\",\n  \"audienceResonance\": \"Alignment with audience psychographics and pain points\",\n  \"engagementTriggers\": \"Specific elements driving reactions based on context\",\n  \"replicationFramework\": \"Actionable template for success replication\",\n  \"formatEffectiveness\": \"Format choice effectiveness for message and audience\"\n}\n\nFor non-video posts, set video-specific fields to \"N/A\".\n\nCRITICAL: Evaluate how this post addresses the 97.1% drop-off challenge. Does it build trust? Simplify value prop? Provide social proof?`;\n\n  return {\n    json: {\n      ...post,\n      customPrompt: prompt\n    }\n  };\n});"
+      },
+      "id": "build-ai-prompt",
+      "name": "Build AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2200, 300]
+    },
+    {
+      "parameters": {
         "conditions": {
           "options": {
             "caseSensitive": true,
@@ -294,7 +329,7 @@
           "parameters": [
             {
               "name": "contents",
-              "value": "={{ (() => {\n  const parts = [{\n    text: `Analyze this ZZUPER Facebook VIDEO post and provide insights in JSON format.\\n\\nPost Details:\\n- ID: ${$json.id}\\n- Type: Video\\n- Created: ${$json.created_time}\\n- Message: ${$json.message || 'No text'}\\n- URL: ${$json.permalink_url}\\n\\nPerformance Metrics:\\n- Impressions: ${$json.metrics.impressions}\\n- Reach: ${$json.metrics.reach}\\n- Reactions: ${$json.metrics.reactions}\\n- Comments: ${$json.metrics.comments}\\n- Shares: ${$json.metrics.shares}\\n- Clicks: ${$json.metrics.clicks}\\n- Performance Score: ${$json.performanceScore}/10\\n- Category: ${$json.category}\\n- Video Views: ${$json.metrics.videoViews || 0}\\n\\nFor this VIDEO post, analyze:\\n1. Hook effectiveness (first 3 seconds)\\n2. Pacing and retention drivers\\n3. Completion factors\\n4. Visual storytelling\\n5. Audio impact\\n6. Copy effectiveness\\n7. Shareability factors\\n8. Audience resonance\\n9. Engagement triggers\\n10. Replication framework\\n\\nReturn a JSON object with these fields:\\n{\\n  \\\"hookEffectiveness\\\": \\\"...\\\",\\n  \\\"pacingRetention\\\": \\\"...\\\",\\n  \\\"completionFactors\\\": \\\"...\\\",\\n  \\\"visualStorytelling\\\": \\\"...\\\",\\n  \\\"audioImpact\\\": \\\"...\\\",\\n  \\\"copyEffectiveness\\\": \\\"...\\\",\\n  \\\"shareabilityFactors\\\": \\\"...\\\",\\n  \\\"audienceResonance\\\": \\\"...\\\",\\n  \\\"engagementTriggers\\\": \\\"...\\\",\\n  \\\"replicationFramework\\\": \\\"...\\\",\\n  \\\"formatEffectiveness\\\": \\\"...\\\"\\n}`\n  }];\n  \n  if ($json.hasVideo && $json.videoBase64) {\n    parts.push({\n      inlineData: {\n        mimeType: $json.videoMimeType || 'video/mp4',\n        data: $json.videoBase64\n      }\n    });\n  }\n  \n  return JSON.stringify([{ parts }]);\n})() }}"
+              "value": "={{ (() => {\n  const parts = [{\n    text: $json.customPrompt || 'Analyze this ZZUPER Facebook VIDEO post and provide insights in JSON format.'\n  }];\n  \n  if ($json.hasVideo && $json.videoBase64) {\n    parts.push({\n      inlineData: {\n        mimeType: $json.videoMimeType || 'video/mp4',\n        data: $json.videoBase64\n      }\n    });\n  }\n  \n  return JSON.stringify([{ parts }]);\n})() }}"
             }
           ]
         },
@@ -321,7 +356,7 @@
           "parameters": [
             {
               "name": "contents",
-              "value": "={{ (() => {\n  const parts = [{\n    text: `Analyze this ZZUPER Facebook NON-VIDEO post (text + image) and provide insights in JSON format.\\n\\nPost Details:\\n- ID: ${$json.id}\\n- Type: Non-Video\\n- Created: ${$json.created_time}\\n- Message: ${$json.message || 'No text'}\\n- URL: ${$json.permalink_url}\\n\\nPerformance Metrics:\\n- Impressions: ${$json.metrics.impressions}\\n- Reach: ${$json.metrics.reach}\\n- Reactions: ${$json.metrics.reactions}\\n- Comments: ${$json.metrics.comments}\\n- Shares: ${$json.metrics.shares}\\n- Clicks: ${$json.metrics.clicks}\\n- Performance Score: ${$json.performanceScore}/10\\n- Category: ${$json.category}\\n\\nFor this NON-VIDEO post, analyze:\\n1. Copy effectiveness\\n2. Image effectiveness (visual appeal, relevance, clarity)\\n3. Shareability factors\\n4. Audience resonance\\n5. Format effectiveness\\n6. Engagement triggers\\n7. Replication framework\\n\\nReturn a JSON object with these fields:\\n{\\n  \\\"copyEffectiveness\\\": \\\"...\\\",\\n  \\\"imageEffectiveness\\\": \\\"...\\\",\\n  \\\"shareabilityFactors\\\": \\\"...\\\",\\n  \\\"audienceResonance\\\": \\\"...\\\",\\n  \\\"formatEffectiveness\\\": \\\"...\\\",\\n  \\\"engagementTriggers\\\": \\\"...\\\",\\n  \\\"replicationFramework\\\": \\\"...\\\",\\n  \\\"hookEffectiveness\\\": \\\"N/A\\\",\\n  \\\"pacingRetention\\\": \\\"N/A\\\",\\n  \\\"completionFactors\\\": \\\"N/A\\\",\\n  \\\"visualStorytelling\\\": \\\"N/A\\\",\\n  \\\"audioImpact\\\": \\\"N/A\\\"\\n}`\n  }];\n  \n  if ($json.hasImage && $json.imageBase64) {\n    parts.push({\n      inlineData: {\n        mimeType: $json.imageMimeType || 'image/jpeg',\n        data: $json.imageBase64\n      }\n    });\n  }\n  \n  return JSON.stringify([{ parts }]);\n})() }}"
+              "value": "={{ (() => {\n  const parts = [{\n    text: $json.customPrompt || 'Analyze this ZZUPER Facebook NON-VIDEO post (text + image) and provide insights in JSON format.'\n  }];\n  \n  if ($json.hasImage && $json.imageBase64) {\n    parts.push({\n      inlineData: {\n        mimeType: $json.imageMimeType || 'image/jpeg',\n        data: $json.imageBase64\n      }\n    });\n  }\n  \n  return JSON.stringify([{ parts }]);\n})() }}"
             }
           ]
         },
@@ -665,6 +700,17 @@
       "main": [
         [
           {
+            "node": "Build AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Prompt": {
+      "main": [
+        [
+          {
             "node": "Split Video/Non-Video",
             "type": "main",
             "index": 0
@@ -830,7 +876,7 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2025-12-29T16:00:00.000Z",
+  "updatedAt": "2025-12-29T16:15:00.000Z",
   "versionId": "1"
 }
 
