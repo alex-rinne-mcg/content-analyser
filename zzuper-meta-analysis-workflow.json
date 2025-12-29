@@ -185,16 +185,18 @@
     },
     {
       "parameters": {
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "key",
-              "value": "={{ $env.GEMINI_API_KEY }}"
-            }
-          ]
-        },
+        "jsCode": "// Add Gemini API key to each post item\n// Environment variables are accessible in Code nodes\nconst items = $input.all();\nconst apiKey = process.env.GEMINI_API_KEY || '';\n\nreturn items.map(item => ({\n  json: {\n    ...item.json,\n    geminiApiKey: apiKey\n  }\n}));"
+      },
+      "id": "add-gemini-key",
+      "name": "Add Gemini Key",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2200, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={{ $json.geminiApiKey }}",
+        "sendQuery": false,
         "sendBody": true,
         "contentType": "json",
         "bodyParameters": {
@@ -540,6 +542,17 @@
       "main": [
         [
           {
+            "node": "Add Gemini Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Gemini Key": {
+      "main": [
+        [
+          {
             "node": "AI Analysis",
             "type": "main",
             "index": 0
@@ -632,7 +645,7 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2025-12-29T15:30:00.000Z",
+  "updatedAt": "2025-12-29T15:35:00.000Z",
   "versionId": "1"
 }
 
