@@ -145,7 +145,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Merge insights with post data\nconst post = $('Filter New').item.json;\nconst insightsResponse = $input.first().json;\n\n// Transform insights array to object\nconst insights = {};\nif (insightsResponse && insightsResponse.data) {\n  insightsResponse.data.forEach(metric => {\n    insights[metric.name] = metric;\n  });\n}\n\n// Also get comments and shares from post if available (using new field names)\nconst comments = post.comments_count || 0;\nconst shares = post.shares_count || 0;\n\nreturn {\n  json: {\n    ...post,\n    insights,\n    comments_count: comments,\n    shares_count: shares\n  }\n};"
+        "jsCode": "// Merge insights with post data\n// Input is an array of insights responses, one per post\n// We need to match each insights response with its corresponding post\n\nconst items = $input.all();\n\n// Get all posts from Filter New node\nconst allPosts = $('Filter New').all().map(item => item.json);\n\n// Merge each insights response with its corresponding post\nreturn items.map((insightsItem, index) => {\n  const post = allPosts[index];\n  const insightsResponse = insightsItem.json;\n  \n  // Transform insights array to object\n  const insights = {};\n  if (insightsResponse && insightsResponse.data) {\n    insightsResponse.data.forEach(metric => {\n      insights[metric.name] = metric;\n    });\n  }\n  \n  // Also get comments and shares from post if available\n  const comments = post.comments_count || 0;\n  const shares = post.shares_count || 0;\n  \n  return {\n    json: {\n      ...post,\n      insights,\n      comments_count: comments,\n      shares_count: shares\n    }\n  };\n});"
       },
       "id": "merge-insights",
       "name": "Merge Insights",
@@ -712,7 +712,7 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2025-12-29T14:35:00.000Z",
+  "updatedAt": "2025-12-29T14:40:00.000Z",
   "versionId": "1"
 }
 
