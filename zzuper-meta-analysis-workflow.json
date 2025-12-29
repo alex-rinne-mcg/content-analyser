@@ -175,36 +175,7 @@
     },
     {
       "parameters": {
-        "url": "=https://graph.facebook.com/v21.0/{{ $json.videoId || $json.id }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "fields",
-              "value": "source"
-            }
-          ]
-        },
-        "options": {},
-        "continueOnFail": true
-      },
-      "id": "get-video-url",
-      "name": "Get Video URL",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [2050, 300],
-      "credentials": {
-        "httpHeaderAuth": {
-          "name": "Header Auth account 4"
-        }
-      },
-      "onError": "continue"
-    },
-    {
-      "parameters": {
-        "jsCode": "// Merge video data with post (handle both video and non-video posts)\nconst post = $('Check If Video').item.json;\nlet videoData = {};\nlet isVideo = false;\n\n// Try to get video data (Get Video URL node has continueOnFail, so $input might be empty)\nif ($input.first()) {\n  try {\n    videoData = $input.first().json || {};\n    // If we got video data, it's a video post\n    if (videoData.source || videoData.length) {\n      isVideo = true;\n    }\n  } catch (e) {\n    // Video data fetch failed, not a video post\n    videoData = {};\n    isVideo = false;\n  }\n}\n\nreturn {\n  json: {\n    ...post,\n    isVideo,\n    source: videoData.source || null,\n    length: videoData.length || null,\n    format: videoData.format || null\n  }\n};"
+        "jsCode": "// Merge video data with post (handle both video and non-video posts)\n// Process all items\nconst items = $input.all();\n\nreturn items.map(item => {\n  const post = item.json;\n  const isVideo = post.isVideo || false;\n  \n  // For video posts, we can extract the video URL from permalink_url if needed\n  // For now, we'll just use the permalink_url as the source\n  // Video metadata (length, format) is not available without making an API call\n  // which causes deprecation warnings for non-video posts\n  \n  return {\n    json: {\n      ...post,\n      isVideo,\n      source: isVideo ? post.permalink_url || null : null,\n      length: null, // Not available without API call\n      format: null // Not available without API call\n    }\n  };\n});"
       },
       "id": "merge-video-data",
       "name": "Merge Video Data",
@@ -558,17 +529,6 @@
       "main": [
         [
           {
-            "node": "Get Video URL",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Video URL": {
-      "main": [
-        [
-          {
             "node": "Merge Video Data",
             "type": "main",
             "index": 0
@@ -672,7 +632,7 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2025-12-29T15:25:00.000Z",
+  "updatedAt": "2025-12-29T15:30:00.000Z",
   "versionId": "1"
 }
 
