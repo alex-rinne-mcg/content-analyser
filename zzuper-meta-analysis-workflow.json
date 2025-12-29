@@ -183,7 +183,7 @@
           "parameters": [
             {
               "name": "fields",
-              "value": "source,length,format"
+              "value": "source"
             }
           ]
         },
@@ -672,7 +672,7 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2025-12-29T15:20:00.000Z",
+  "updatedAt": "2025-12-29T15:25:00.000Z",
   "versionId": "1"
 }
 
