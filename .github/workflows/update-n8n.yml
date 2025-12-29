@@ -43,8 +43,9 @@ jobs:
           fi
           
           # Read workflow JSON and filter to only allowed fields for N8N API
-          # N8N API only accepts: name, nodes, connections, settings, staticData
+          # N8N API accepts: name, nodes (including credentials), connections, settings, staticData
           # It does NOT accept: id, active, createdAt, updatedAt, versionId, tags (read-only), etc.
+          # Note: credentials are part of nodes, so they will be included when we include nodes
           WORKFLOW_JSON=$(cat zzuper-meta-analysis-workflow.json | jq '{
             name: .name,
             nodes: .nodes,
