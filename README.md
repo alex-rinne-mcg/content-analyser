@@ -14,7 +14,10 @@ This N8N workflow runs every Monday at 9 AM to:
 
 ## Prerequisites
 
-1. **N8N Instance** (self-hosted or cloud)
+1. **N8N Instance** 
+   - Option A: N8N Cloud (managed, zie [N8N_CLOUD_FILESYSTEM_SETUP.md](N8N_CLOUD_FILESYSTEM_SETUP.md))
+   - Option B: Railway (self-hosted, zie [RAILWAY_SETUP.md](RAILWAY_SETUP.md)) ⭐ **Aanbevolen voor grote video bestanden**
+   - Option C: Self-hosted Docker
 2. **Meta Graph API Access**
    - Page ID: `185121598021398`
    - Required permissions: `pages_read_engagement`, `pages_show_list`
@@ -25,6 +28,32 @@ This N8N workflow runs every Monday at 9 AM to:
    - Sheet ID: `1ye1nbaT4GyREOJsWuiXVavc_nvXHcDMLU7hqwCqapqY`
    - Edit access required
    - 4 tabs: `Post Performance Data`, `AI Analysis`, `Weekly Patterns`, `Tracker`
+
+## Quick Start
+
+### Railway Deployment (Aanbevolen)
+
+Voor ondersteuning van grote video bestanden (50-100MB), gebruik Railway:
+
+1. **Volg de [Railway Setup Guide](RAILWAY_SETUP.md)**
+2. Railway configureert automatisch `N8N_DEFAULT_BINARY_DATA_MODE=filesystem`
+3. Import je workflows na deployment
+4. Configureer credentials
+
+**Voordelen:**
+- ✅ Volledige controle over environment variables
+- ✅ Ondersteuning voor grote video bestanden
+- ✅ Automatische HTTPS en scaling
+- ✅ ~$5-9/maand (goedkoper dan N8N Cloud)
+
+### N8N Cloud Deployment
+
+Als je N8N Cloud gebruikt:
+
+1. **Volg de [N8N Cloud Setup Guide](N8N_CLOUD_FILESYSTEM_SETUP.md)**
+2. Vraag N8N Cloud support om `N8N_DEFAULT_BINARY_DATA_MODE=filesystem` in te stellen
+3. Import je workflows
+4. Configureer credentials
 
 ## Setup Instructions
 
@@ -245,5 +274,6 @@ For issues or questions:
 ---
 
 **Last Updated**: 2024-01-01
+
 
 

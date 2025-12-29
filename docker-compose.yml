@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  n8n:
+    build: .
+    container_name: n8n
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      # Binary data handling - CRITICAL for large video files
+      - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
+      - N8N_BINARY_DATA_STORAGE_PATH=/home/node/.n8n/binaryData
+      
+      # N8N Configuration
+      - N8N_HOST=${N8N_HOST:-0.0.0.0}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-https}
+      
+      # Webhook URL (Railway will provide this)
+      - WEBHOOK_URL=${WEBHOOK_URL}
+      
+      # Optional: Encryption key for credentials (generate a random string)
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      
+      # Optional: User management
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE:-true}
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+    volumes:
+      # Persistent storage for workflows and data
+      - n8n_data:/home/node/.n8n
+      # Binary data storage (videos, images)
+      - n8n_binary_data:/home/node/.n8n/binaryData
+    networks:
+      - n8n-network
+
+volumes:
+  n8n_data:
+    driver: local
+  n8n_binary_data:
+    driver: local
+
+networks:
+  n8n-network:
+    driver: bridge
+

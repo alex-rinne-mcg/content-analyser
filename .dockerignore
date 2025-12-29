@@ -1,0 +1,39 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Python files (not needed for N8N)
+*.py
+__pycache__/
+*.pyc
+
+# Test files
+test_*.py
+check_*.py
+validate_*.py
+extract_*.py
+refresh_*.py
+
+# Config files
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
