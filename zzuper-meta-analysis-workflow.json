@@ -289,7 +289,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Prepare video file for Gemini API\nconst item = $input.first();\n\n// Get video file from binary data\nconst videoFile = item.binary?.video || item.binary?.data;\n\nif (!videoFile) {\n  // If no video file, return post data without video\n  return {\n    json: {\n      ...item.json,\n      hasVideo: false,\n      videoError: 'No video file found'\n    }\n  };\n}\n\n// Convert to base64\nconst base64Video = videoFile.data;\nconst mimeType = videoFile.mimeType || 'video/mp4';\n\nreturn {\n  json: {\n    ...item.json,\n    videoBase64: base64Video,\n    videoMimeType: mimeType,\n    hasVideo: true\n  }\n};"
+        "jsCode": "// Prepare video file for Gemini API with memory optimization\nconst item = $input.first();\n\n// Get video file from binary data\nconst videoFile = item.binary?.video || item.binary?.data;\n\nif (!videoFile) {\n  // If no video file, return post data without video\n  return {\n    json: {\n      ...item.json,\n      hasVideo: false,\n      videoError: 'No video file found'\n    }\n  };\n}\n\n// Check file size (Gemini has a 2GB limit, but we should keep it smaller for memory)\n// If video is too large (>50MB), skip video analysis\nconst maxSizeBytes = 50 * 1024 * 1024; // 50MB\nconst fileSize = videoFile.data?.length || 0;\n\nif (fileSize > maxSizeBytes) {\n  return {\n    json: {\n      ...item.json,\n      hasVideo: false,\n      videoError: `Video too large (${Math.round(fileSize / 1024 / 1024)}MB). Maximum 50MB for analysis.`\n    }\n  };\n}\n\n// For very large videos, we might need to process in chunks\n// But for now, let's try to convert directly with error handling\ntry {\n  // Convert to base64\n  // Note: videoFile.data is already base64 in N8N binary format\n  const base64Video = videoFile.data;\n  const mimeType = videoFile.mimeType || 'video/mp4';\n  \n  // Additional check: if base64 string is too long, it might cause memory issues\n  if (base64Video && base64Video.length > 100000000) { // ~100MB base64 string\n    return {\n      json: {\n        ...item.json,\n        hasVideo: false,\n        videoError: 'Video base64 encoding too large for memory. Video may be too long.'\n      }\n    };\n  }\n  \n  return {\n    json: {\n      ...item.json,\n      videoBase64: base64Video,\n      videoMimeType: mimeType,\n      hasVideo: true\n    }\n  };\n} catch (error) {\n  return {\n    json: {\n      ...item.json,\n      hasVideo: false,\n      videoError: `Error processing video: ${error.message}`\n    }\n  };\n}"
       },
       "id": "prepare-video-gemini",
       "name": "Prepare Video for Gemini",
@@ -864,7 +864,7 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2025-12-29T16:30:00.000Z",
+  "updatedAt": "2025-12-29T16:45:00.000Z",
   "versionId": "1"
 }
 
