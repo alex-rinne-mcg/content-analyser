@@ -43,15 +43,14 @@ jobs:
           fi
           
           # Read workflow JSON and filter to only allowed fields for N8N API
-          # N8N API only accepts: name, nodes, connections, settings, staticData, tags
-          # It does NOT accept: id, active, createdAt, updatedAt, versionId, etc.
+          # N8N API only accepts: name, nodes, connections, settings, staticData
+          # It does NOT accept: id, active, createdAt, updatedAt, versionId, tags (read-only), etc.
           WORKFLOW_JSON=$(cat zzuper-meta-analysis-workflow.json | jq '{
             name: .name,
             nodes: .nodes,
             connections: .connections,
             settings: .settings,
-            staticData: .staticData,
-            tags: .tags
+            staticData: .staticData
           }')
           
           # Update workflow via N8N API
