@@ -1,0 +1,737 @@
+{
+  "name": "ZZUPER Meta Post Analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "1ye1nbaT4GyREOJsWuiXVavc_nvXHcDMLU7hqwCqapqY",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Tracker",
+          "mode": "name"
+        },
+        "options": {
+          "range": "A1:C2"
+        }
+      },
+      "id": "read-tracker",
+      "name": "Read Tracker",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [450, 300],
+      "credentials": {
+        "googleServiceAccount": {
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate date range based on tracker or default to 30 days\nconst tracker = $input.first().json;\nconst lastRunDate = tracker['Last Run Date'] || null;\n\nlet startDate, endDate;\n\nif (lastRunDate) {\n  // Incremental: from last run to now\n  startDate = new Date(lastRunDate);\n  endDate = new Date();\n} else {\n  // First run: last 30 days\n  endDate = new Date();\n  startDate = new Date();\n  startDate.setDate(startDate.getDate() - 30);\n}\n\n// Format for Meta API (Unix timestamp)\nconst startTimestamp = Math.floor(startDate.getTime() / 1000);\nconst endTimestamp = Math.floor(endDate.getTime() / 1000);\n\nreturn {\n  json: {\n    startDate: startDate.toISOString().split('T')[0],\n    endDate: endDate.toISOString().split('T')[0],\n    startTimestamp,\n    endTimestamp,\n    lastPostId: tracker['Last Post ID'] || null\n  }\n};"
+      },
+      "id": "calculate-date-range",
+      "name": "Calculate Date Range",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://graph.facebook.com/v21.0/185121598021398/posts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,message,created_time,permalink_url,full_picture,comments_count,shares_count"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-posts",
+      "name": "Fetch Posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [850, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract posts array from Meta API response and filter by date\nconst response = $input.first().json;\nconst posts = response.data || [];\n\n// Get date range from Calculate Date Range node\n// In N8N, we can reference previous nodes that have already executed\nlet dateRange;\ntry {\n  // Try to get date range from Calculate Date Range node\n  const dateRangeNode = $('Calculate Date Range');\n  if (dateRangeNode && dateRangeNode.item) {\n    dateRange = dateRangeNode.item.json;\n  } else {\n    throw new Error('Date range node not found');\n  }\n} catch (e) {\n  // Fallback: calculate date range here if node reference fails\n  // This happens on first run (last 30 days)\n  const endDate = new Date();\n  const startDate = new Date();\n  startDate.setDate(startDate.getDate() - 30);\n  dateRange = {\n    startDate: startDate.toISOString().split('T')[0],\n    endDate: endDate.toISOString().split('T')[0],\n    lastPostId: null\n  };\n}\n\nconst startDate = new Date(dateRange.startDate + 'T00:00:00Z');\nconst endDate = new Date(dateRange.endDate + 'T23:59:59Z');\n\n// Filter posts by date range\nconst filteredPosts = posts.filter(post => {\n  if (!post.created_time) return false;\n  const postDate = new Date(post.created_time);\n  return postDate >= startDate && postDate <= endDate;\n});\n\n// Return each post as a separate item\nreturn filteredPosts.map(post => ({ json: post }));"
+      },
+      "id": "extract-posts",
+      "name": "Extract Posts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [950, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "filter-new-posts",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "={{ $('Calculate Date Range').item.json.lastPostId || '' }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEqual"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-new",
+      "name": "Filter New",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v21.0/{{ $json.id }}/insights",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "metric",
+              "value": "post_impressions,post_reach,post_reactions_by_type_total,post_clicks,post_engaged_users,post_negative_feedback"
+            },
+            {
+              "name": "period",
+              "value": "lifetime"
+            }
+            ]
+        },
+        "options": {
+          "response": {
+            "fullResponse": false,
+            "responseFormat": "json"
+          }
+        }
+      },
+      "id": "get-insights",
+      "name": "Get Insights",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Header Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge insights with post data\nconst post = $('Filter New').item.json;\nconst insightsResponse = $input.first().json;\n\n// Transform insights array to object\nconst insights = {};\nif (insightsResponse && insightsResponse.data) {\n  insightsResponse.data.forEach(metric => {\n    insights[metric.name] = metric;\n  });\n}\n\n// Also get comments and shares from post if available (using new field names)\nconst comments = post.comments_count || 0;\nconst shares = post.shares_count || 0;\n\nreturn {\n  json: {\n    ...post,\n    insights,\n    comments_count: comments,\n    shares_count: shares\n  }\n};"
+      },
+      "id": "merge-insights",
+      "name": "Merge Insights",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate performance metrics and scores\nconst post = $input.first().json;\nconst insights = post.insights || {};\n\n// Extract metrics\nconst impressions = parseInt(insights.post_impressions?.values?.[0]?.value || 0);\nconst reach = parseInt(insights.post_reach?.values?.[0]?.value || 0);\nconst reactions = parseInt(insights.post_reactions_by_type_total?.values?.[0]?.value || 0);\nconst clicks = parseInt(insights.post_clicks?.values?.[0]?.value || 0);\nconst engagedUsers = parseInt(insights.post_engaged_users?.values?.[0]?.value || 0);\nconst negativeFeedback = parseInt(insights.post_negative_feedback?.values?.[0]?.value || 0);\n\n// Get comments and shares from post data (using new field names)\nconst comments = parseInt(post.comments_count || 0);\nconst shares = parseInt(post.shares_count || 0);\n\n// Calculate rates\nconst engagementRate = impressions > 0 ? ((reactions + comments + shares) / impressions) * 100 : 0;\nconst shareRate = impressions > 0 ? (shares / impressions) * 100 : 0;\nconst clickRate = impressions > 0 ? (clicks / impressions) * 100 : 0;\n\n// Performance score calculation\n// Score = (engagementRate × 0.4) + (shareRate × 100 × 0.3) + (clickRate × 0.2) + (videoCompletionRate × 0.1)\nlet performanceScore = (engagementRate * 0.4) + (shareRate * 100 * 0.3) + (clickRate * 0.2);\n\n// Category determination\nlet category = 'poor';\nif (performanceScore > 10) category = 'exceptional';\nelse if (performanceScore >= 5) category = 'good';\nelse if (performanceScore >= 2) category = 'average';\n\nreturn {\n  json: {\n    ...post,\n    metrics: {\n      impressions,\n      reach,\n      reactions,\n      comments,\n      shares,\n      clicks,\n      engagedUsers,\n      negativeFeedback\n    },\n    rates: {\n      engagementRate: parseFloat(engagementRate.toFixed(2)),\n      shareRate: parseFloat(shareRate.toFixed(4)),\n      clickRate: parseFloat(clickRate.toFixed(2))\n    },\n    performanceScore: parseFloat(performanceScore.toFixed(2)),\n    category\n  }\n};"
+      },
+      "id": "calculate-metrics",
+      "name": "Calculate Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "filter-engagement",
+              "leftValue": "={{ $json.metrics.impressions }}",
+              "rightValue": 100,
+              "operator": {
+                "type": "number",
+                "operation": "largerEqual"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-engagement",
+      "name": "Filter Engagement",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if post is a video\n// Note: Since we removed 'type' and 'attachments' fields due to API deprecation,\n// we'll determine if it's a video by checking if video data exists later\n// For now, we'll set isVideo to false and check in Get Video URL node\nconst post = $input.first().json;\n\n// We can't determine if it's a video from the current fields\n// The Get Video URL node will handle this and set isVideo accordingly\nlet isVideo = false;\nlet videoId = null;\n\n// If we have a permalink_url, we can check if it contains video indicators\n// But for now, we'll let the Get Video URL node determine this\n\nreturn {\n  json: {\n    ...post,\n    isVideo,\n    videoId\n  }\n};"
+      },
+      "id": "check-if-video",
+      "name": "Check If Video",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v21.0/{{ $json.videoId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "source,length,format"
+            }
+          ]
+        },
+        "options": {},
+        "continueOnFail": true
+      },
+      "id": "get-video-url",
+      "name": "Get Video URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2050, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Header Auth account 4"
+        }
+      },
+      "onError": "continue"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge video data with post (handle both video and non-video posts)\nconst post = $('Check If Video').item.json;\nlet videoData = {};\nlet isVideo = false;\n\n// Try to get video data (Get Video URL node has continueOnFail, so $input might be empty)\nif ($input.first()) {\n  try {\n    videoData = $input.first().json || {};\n    // If we got video data, it's a video post\n    if (videoData.source || videoData.length) {\n      isVideo = true;\n    }\n  } catch (e) {\n    // Video data fetch failed, not a video post\n    videoData = {};\n    isVideo = false;\n  }\n}\n\nreturn {\n  json: {\n    ...post,\n    isVideo,\n    source: videoData.source || null,\n    length: videoData.length || null,\n    format: videoData.format || null\n  }\n};"
+      },
+      "id": "merge-video-data",
+      "name": "Merge Video Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2150, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "={{ $env.GEMINI_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "contents",
+              "value": "={{ JSON.stringify([{\n  parts: [{\n    text: `Analyze this ZZUPER Facebook post and provide insights in JSON format.\n\nPost Details:\n- ID: ${$json.id}\n- Type: ${$json.isVideo ? 'Video' : 'Non-Video'}\n- Created: ${$json.created_time}\n- Message: ${$json.message || 'No text'}\n- URL: ${$json.permalink_url}\n\nPerformance Metrics:\n- Impressions: ${$json.metrics.impressions}\n- Reach: ${$json.metrics.reach}\n- Reactions: ${$json.metrics.reactions}\n- Comments: ${$json.metrics.comments}\n- Shares: ${$json.metrics.shares}\n- Clicks: ${$json.metrics.clicks}\n- Performance Score: ${$json.performanceScore}/10\n- Category: ${$json.category}\n\n${$json.isVideo ? `Video URL: ${$json.source || 'N/A'}\nVideo Length: ${$json.length || 'N/A'} seconds` : ''}\n\n${$json.isVideo ? `\nFor VIDEO posts, analyze:\n1. Hook effectiveness (first 3 seconds)\n2. Pacing and retention drivers\n3. Completion factors\n4. Visual storytelling\n5. Audio impact\n6. Copy effectiveness\n7. Shareability factors\n8. Audience resonance\n9. Engagement triggers\n10. Replication framework\n` : `\nFor NON-VIDEO posts, analyze:\n1. Copy effectiveness\n2. Shareability factors\n3. Audience resonance\n4. Format effectiveness\n5. Engagement triggers\n6. Replication framework\n`}\n\nReturn a JSON object with these fields:\n{\n  \"hookEffectiveness\": \"...\",\n  \"pacingRetention\": \"...\",\n  \"completionFactors\": \"...\",\n  \"visualStorytelling\": \"...\",\n  \"audioImpact\": \"...\",\n  \"copyEffectiveness\": \"...\",\n  \"shareabilityFactors\": \"...\",\n  \"audienceResonance\": \"...\",\n  \"engagementTriggers\": \"...\",\n  \"replicationFramework\": \"...\",\n  \"formatEffectiveness\": \"...\"\n}\n\nFor non-video posts, set video-specific fields to \"N/A\".`\n    }\n  }]\n}]) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ai-analysis",
+      "name": "AI Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI response from Gemini\nconst response = $input.first().json;\nconst post = $('Merge Video Data').item.json;\n\nlet aiInsights = {};\n\ntry {\n  const content = response.candidates?.[0]?.content?.parts?.[0]?.text || '';\n  \n  // Extract JSON from response (might be wrapped in markdown code blocks)\n  let jsonText = content.trim();\n  if (jsonText.startsWith('```json')) {\n    jsonText = jsonText.replace(/```json\\s*/g, '').replace(/```\\s*/g, '');\n  } else if (jsonText.startsWith('```')) {\n    jsonText = jsonText.replace(/```\\s*/g, '');\n  }\n  \n  aiInsights = JSON.parse(jsonText);\n} catch (error) {\n  // Fallback: create structured object with raw text\n  aiInsights = {\n    rawAnalysis: response.candidates?.[0]?.content?.parts?.[0]?.text || 'Analysis failed',\n    error: error.message\n  };\n}\n\nreturn {\n  json: {\n    ...post,\n    aiInsights\n  }\n};"
+      },
+      "id": "parse-ai-response",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1ye1nbaT4GyREOJsWuiXVavc_nvXHcDMLU7hqwCqapqY",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Post Performance Data",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Post ID": "={{ $json.id }}",
+            "URL": "={{ $json.permalink_url }}",
+            "Date": "={{ $json.created_time }}",
+            "Type": "={{ $json.isVideo ? 'Video' : 'Non-Video' }}",
+            "Copy": "={{ $json.message || '' }}",
+            "Impressions": "={{ $json.metrics.impressions }}",
+            "Reach": "={{ $json.metrics.reach }}",
+            "Reactions": "={{ $json.metrics.reactions }}",
+            "Comments": "={{ $json.metrics.comments }}",
+            "Shares": "={{ $json.metrics.shares }}",
+            "Clicks": "={{ $json.metrics.clicks }}",
+            "Engaged Users": "={{ $json.metrics.engagedUsers }}",
+            "Negative Feedback": "={{ $json.metrics.negativeFeedback }}",
+            "Engagement Rate": "={{ $json.rates.engagementRate }}",
+            "Share Rate": "={{ $json.rates.shareRate }}",
+            "Click Rate": "={{ $json.rates.clickRate }}",
+            "Performance Score": "={{ $json.performanceScore }}",
+            "Category": "={{ $json.category }}",
+            "Video URL": "={{ $json.source || 'N/A' }}",
+            "Video Length": "={{ $json.length || 'N/A' }}",
+            "Video Format": "={{ $json.format || 'N/A' }}",
+            "Video Views": "={{ $json.metrics.videoViews || 'N/A' }}",
+            "Video Completion Rate": "={{ $json.metrics.videoCompletionRate || 'N/A' }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "write-performance-data",
+      "name": "Write Performance Data",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [2650, 300],
+      "credentials": {
+        "googleServiceAccount": {
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1ye1nbaT4GyREOJsWuiXVavc_nvXHcDMLU7hqwCqapqY",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "AI Analysis",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Post ID": "={{ $json.id }}",
+            "URL": "={{ $json.permalink_url }}",
+            "Hook Effectiveness": "={{ $json.aiInsights.hookEffectiveness || 'N/A' }}",
+            "Pacing & Retention": "={{ $json.aiInsights.pacingRetention || 'N/A' }}",
+            "Completion Factors": "={{ $json.aiInsights.completionFactors || 'N/A' }}",
+            "Visual Storytelling": "={{ $json.aiInsights.visualStorytelling || 'N/A' }}",
+            "Audio Impact": "={{ $json.aiInsights.audioImpact || 'N/A' }}",
+            "Copy Effectiveness": "={{ $json.aiInsights.copyEffectiveness || 'N/A' }}",
+            "Shareability Factors": "={{ $json.aiInsights.shareabilityFactors || 'N/A' }}",
+            "Audience Resonance": "={{ $json.aiInsights.audienceResonance || 'N/A' }}",
+            "Engagement Triggers": "={{ $json.aiInsights.engagementTriggers || 'N/A' }}",
+            "Replication Framework": "={{ $json.aiInsights.replicationFramework || 'N/A' }}",
+            "Format Effectiveness": "={{ $json.aiInsights.formatEffectiveness || 'N/A' }}",
+            "Raw Analysis": "={{ JSON.stringify($json.aiInsights) }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "write-ai-insights",
+      "name": "Write AI Insights",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [2850, 300],
+      "credentials": {
+        "googleServiceAccount": {
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByIndex",
+        "options": {}
+      },
+      "id": "aggregate-posts",
+      "name": "Aggregate Posts",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [2950, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate weekly summary from all processed posts\nconst allItems = $input.all();\n\nif (allItems.length === 0) {\n  return {\n    json: {\n      week: new Date().toISOString().split('T')[0],\n      postsCount: 0,\n      message: 'No new posts to analyze'\n    }\n  };\n}\n\n// Extract all posts from aggregated data\nconst allPosts = allItems.map(item => item.json);\n\n// Calculate averages\nconst avgScore = allPosts.reduce((sum, post) => sum + (post.performanceScore || 0), 0) / allPosts.length;\nconst avgImpressions = allPosts.reduce((sum, post) => sum + (post.metrics?.impressions || 0), 0) / allPosts.length;\nconst avgEngagementRate = allPosts.reduce((sum, post) => sum + (post.rates?.engagementRate || 0), 0) / allPosts.length;\n\n// Find best post\nconst bestPost = allPosts.reduce((best, current) => {\n  return (current.performanceScore || 0) > (best.performanceScore || 0) ? current : best;\n}, allPosts[0]);\n\n// Count formats\nconst videoCount = allPosts.filter(post => post.isVideo).length;\nconst nonVideoCount = allPosts.length - videoCount;\n\n// Extract winning patterns and failures from AI insights\nconst winningPatterns = [];\nconst commonFailures = [];\n\nallPosts.forEach(post => {\n  const insights = post.aiInsights || {};\n  const score = post.performanceScore || 0;\n  \n  if (score >= 5) {\n    // Winning patterns\n    if (insights.hookEffectiveness && insights.hookEffectiveness !== 'N/A') {\n      winningPatterns.push(insights.hookEffectiveness.substring(0, 100));\n    }\n    if (insights.engagementTriggers && insights.engagementTriggers !== 'N/A') {\n      winningPatterns.push(insights.engagementTriggers.substring(0, 100));\n    }\n    if (insights.copyEffectiveness && insights.copyEffectiveness !== 'N/A') {\n      winningPatterns.push(insights.copyEffectiveness.substring(0, 100));\n    }\n  } else if (score < 2) {\n    // Failures\n    if (insights.copyEffectiveness && insights.copyEffectiveness !== 'N/A') {\n      commonFailures.push(insights.copyEffectiveness.substring(0, 100));\n    }\n  }\n});\n\n// Get current week number\nconst now = new Date();\nconst start = new Date(now.getFullYear(), 0, 1);\nconst days = Math.floor((now - start) / (24 * 60 * 60 * 1000));\nconst weekNumber = Math.ceil((days + start.getDay() + 1) / 7);\n\n// Generate playbook text\nconst winningText = winningPatterns.slice(0, 3).join(', ') || 'No clear patterns identified';\nconst failureText = commonFailures.slice(0, 3).join(', ') || 'No clear failures identified';\n\nconst playbook = `ZZUPER PLAYBOOK - Week ${weekNumber}\nPosts: ${allPosts.length} | Avg Score: ${avgScore.toFixed(1)}/10\nBest: ${bestPost.permalink_url} - ${bestPost.performanceScore.toFixed(1)}/10\n\n✅ WINNING: ${winningText}\n❌ AVOID: ${failureText}\nFORMAT: Video: ${videoCount} | Image/Text: ${nonVideoCount}`;\n\nreturn {\n  json: {\n    week: weekNumber,\n    weekDate: now.toISOString().split('T')[0],\n    postsCount: allPosts.length,\n    avgScore: parseFloat(avgScore.toFixed(2)),\n    avgImpressions: parseFloat(avgImpressions.toFixed(0)),\n    avgEngagementRate: parseFloat(avgEngagementRate.toFixed(2)),\n    bestPostUrl: bestPost.permalink_url,\n    bestPostScore: bestPost.performanceScore,\n    videoCount,\n    nonVideoCount,\n    winningPatterns: winningPatterns.slice(0, 5).join(' | ') || 'N/A',\n    commonFailures: commonFailures.slice(0, 5).join(' | ') || 'N/A',\n    playbook,\n    lastPostId: allPosts[allPosts.length - 1].id\n  }\n};"
+      },
+      "id": "generate-summary",
+      "name": "Generate Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3050, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1ye1nbaT4GyREOJsWuiXVavc_nvXHcDMLU7hqwCqapqY",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Weekly Patterns",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Week": "={{ $json.week }}",
+            "Week Date": "={{ $json.weekDate }}",
+            "Posts Count": "={{ $json.postsCount }}",
+            "Avg Score": "={{ $json.avgScore }}",
+            "Avg Impressions": "={{ $json.avgImpressions }}",
+            "Avg Engagement Rate": "={{ $json.avgEngagementRate }}",
+            "Best Post URL": "={{ $json.bestPostUrl }}",
+            "Best Post Score": "={{ $json.bestPostScore }}",
+            "Winning Patterns": "={{ $json.winningPatterns }}",
+            "Common Failures": "={{ $json.commonFailures }}",
+            "Video Count": "={{ $json.videoCount }}",
+            "Non-Video Count": "={{ $json.nonVideoCount }}",
+            "Playbook": "={{ $json.playbook }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "write-weekly-patterns",
+      "name": "Write Weekly Patterns",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [3250, 300],
+      "credentials": {
+        "googleServiceAccount": {
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1ye1nbaT4GyREOJsWuiXVavc_nvXHcDMLU7hqwCqapqY",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Tracker",
+          "mode": "name"
+        },
+        "columnToMatchOn": "Last Run Date",
+        "valueToMatchOn": "={{ $('Read Tracker').item.json['Last Run Date'] || '' }}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Last Run Date": "={{ $('Generate Summary').item.json.weekDate }}",
+            "Last Post ID": "={{ $('Generate Summary').item.json.lastPostId }}",
+            "Posts Added": "={{ $('Generate Summary').item.json.postsCount }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "update-tracker",
+      "name": "Update Tracker",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [3450, 300],
+      "credentials": {
+        "googleServiceAccount": {
+          "name": "Google Service Account account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Tracker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Tracker": {
+      "main": [
+        [
+          {
+            "node": "Calculate Date Range",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Date Range": {
+      "main": [
+        [
+          {
+            "node": "Fetch Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Posts": {
+      "main": [
+        [
+          {
+            "node": "Extract Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Posts": {
+      "main": [
+        [
+          {
+            "node": "Filter New",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter New": {
+      "main": [
+        [
+          {
+            "node": "Get Insights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Insights": {
+      "main": [
+        [
+          {
+            "node": "Merge Insights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Insights": {
+      "main": [
+        [
+          {
+            "node": "Calculate Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Metrics": {
+      "main": [
+        [
+          {
+            "node": "Filter Engagement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Engagement": {
+      "main": [
+        [
+          {
+            "node": "Check If Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Video": {
+      "main": [
+        [
+          {
+            "node": "Get Video URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Video URL": {
+      "main": [
+        [
+          {
+            "node": "Merge Video Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Video Data": {
+      "main": [
+        [
+          {
+            "node": "AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Analysis": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Write Performance Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Performance Data": {
+      "main": [
+        [
+          {
+            "node": "Write AI Insights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write AI Insights": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Posts": {
+      "main": [
+        [
+          {
+            "node": "Generate Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Summary": {
+      "main": [
+        [
+          {
+            "node": "Write Weekly Patterns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Weekly Patterns": {
+      "main": [
+        [
+          {
+            "node": "Update Tracker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
+
