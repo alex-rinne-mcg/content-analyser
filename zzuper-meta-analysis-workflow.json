@@ -117,7 +117,7 @@
           "parameters": [
             {
               "name": "metric",
-              "value": "post_impressions,post_reach,post_clicks"
+              "value": "post_clicks,post_reactions_by_type_total,post_fan_reach,post_video_views"
             },
             {
               "name": "period",
@@ -155,7 +155,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Calculate performance metrics and scores\nconst post = $input.first().json;\nconst insights = post.insights || {};\n\n// Extract metrics\nconst impressions = parseInt(insights.post_impressions?.values?.[0]?.value || 0);\nconst reach = parseInt(insights.post_reach?.values?.[0]?.value || 0);\nconst reactions = 0; // Will be calculated from post data if needed\nconst clicks = parseInt(insights.post_clicks?.values?.[0]?.value || 0);\nconst engagedUsers = 0; // Not available in current metrics\nconst negativeFeedback = 0; // Not available in current metrics\n\n// Get comments and shares from post data (using new field names)\nconst comments = parseInt(post.comments_count || 0);\nconst shares = parseInt(post.shares_count || 0);\n\n// Calculate rates\nconst engagementRate = impressions > 0 ? ((reactions + comments + shares) / impressions) * 100 : 0;\nconst shareRate = impressions > 0 ? (shares / impressions) * 100 : 0;\nconst clickRate = impressions > 0 ? (clicks / impressions) * 100 : 0;\n\n// Performance score calculation\n// Score = (engagementRate × 0.4) + (shareRate × 100 × 0.3) + (clickRate × 0.2) + (videoCompletionRate × 0.1)\nlet performanceScore = (engagementRate * 0.4) + (shareRate * 100 * 0.3) + (clickRate * 0.2);\n\n// Category determination\nlet category = 'poor';\nif (performanceScore > 10) category = 'exceptional';\nelse if (performanceScore >= 5) category = 'good';\nelse if (performanceScore >= 2) category = 'average';\n\nreturn {\n  json: {\n    ...post,\n    metrics: {\n      impressions,\n      reach,\n      reactions,\n      comments,\n      shares,\n      clicks,\n      engagedUsers,\n      negativeFeedback\n    },\n    rates: {\n      engagementRate: parseFloat(engagementRate.toFixed(2)),\n      shareRate: parseFloat(shareRate.toFixed(4)),\n      clickRate: parseFloat(clickRate.toFixed(2))\n    },\n    performanceScore: parseFloat(performanceScore.toFixed(2)),\n    category\n  }\n};"
+        "jsCode": "// Calculate performance metrics and scores\nconst post = $input.first().json;\nconst insights = post.insights || {};\n\n// Extract metrics\nconst impressions = parseInt(insights.post_impressions?.values?.[0]?.value || 0);\nconst reach = parseInt(insights.post_reach?.values?.[0]?.value || 0);\nconst reactions = 0; // Will be calculated from post data if needed\nconst clicks = parseInt(insights.post_clicks?.values?.[0]?.value || 0);\nconst engagedUsers = 0; // Not available in current metrics\nconst negativeFeedback = 0; // Not available in current metrics\n\n// Get comments and shares from post data (using new field names)\nconst comments = parseInt(post.comments_count || 0);\nconst shares = parseInt(post.shares_count || 0);\n\n// Calculate rates (using reach/fan_reach as base for calculations)\nconst baseReach = reach || impressions || 1; // Use reach or impressions, fallback to 1 to avoid division by zero\nconst engagementRate = baseReach > 0 ? ((reactions + comments + shares) / baseReach) * 100 : 0;\nconst shareRate = baseReach > 0 ? (shares / baseReach) * 100 : 0;\nconst clickRate = baseReach > 0 ? (clicks / baseReach) * 100 : 0;\n\n// Performance score calculation\n// Score = (engagementRate × 0.4) + (shareRate × 100 × 0.3) + (clickRate × 0.2) + (videoCompletionRate × 0.1)\nlet performanceScore = (engagementRate * 0.4) + (shareRate * 100 * 0.3) + (clickRate * 0.2);\n\n// Category determination\nlet category = 'poor';\nif (performanceScore > 10) category = 'exceptional';\nelse if (performanceScore >= 5) category = 'good';\nelse if (performanceScore >= 2) category = 'average';\n\nreturn {\n  json: {\n    ...post,\n    metrics: {\n      impressions,\n      reach,\n      reactions,\n      comments,\n      shares,\n      clicks,\n      videoViews,\n      engagedUsers,\n      negativeFeedback\n    },\n    rates: {\n      engagementRate: parseFloat(engagementRate.toFixed(2)),\n      shareRate: parseFloat(shareRate.toFixed(4)),\n      clickRate: parseFloat(clickRate.toFixed(2))\n    },\n    performanceScore: parseFloat(performanceScore.toFixed(2)),\n    category\n  }\n};"
       },
       "id": "calculate-metrics",
       "name": "Calculate Metrics",
@@ -712,7 +712,7 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2025-12-29T14:25:00.000Z",
+  "updatedAt": "2025-12-29T14:30:00.000Z",
   "versionId": "1"
 }
 
