@@ -1,0 +1,201 @@
+{
+  "name": "Sync Workflows from GitHub",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger (Every 6 hours)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://raw.githubusercontent.com/alex-rinne-mcg/content-analyser/main/zzuper-meta-analysis-workflow.json",
+        "options": {
+          "response": {
+            "responseFormat": "json"
+          }
+        }
+      },
+      "id": "fetch-workflow-github",
+      "name": "Fetch Workflow from GitHub",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://content-analyser-production.up.railway.app/rest/workflows",
+        "options": {
+          "response": {
+            "responseFormat": "json"
+          }
+        }
+      },
+      "id": "get-existing-workflows",
+      "name": "Get Existing Workflows",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if workflow exists and compare versions\nconst githubWorkflow = $('Fetch Workflow from GitHub').item.json;\nconst existingWorkflows = $input.first().json || [];\nconst workflowName = githubWorkflow.name || 'ZZUPER Meta Post Analysis';\n\n// Find existing workflow by name\nconst existing = Array.isArray(existingWorkflows) ? \n  existingWorkflows.find(w => w.name === workflowName) :\n  null;\n\nif (existing) {\n  // Compare workflow hash (simple comparison based on nodes count and connections)\n  const githubHash = JSON.stringify({\n    nodeCount: githubWorkflow.nodes?.length || 0,\n    connectionCount: Object.keys(githubWorkflow.connections || {}).length,\n    updatedAt: githubWorkflow.updatedAt\n  });\n  \n  const existingHash = JSON.stringify({\n    nodeCount: existing.nodes?.length || 0,\n    connectionCount: Object.keys(existing.connections || {}).length,\n    updatedAt: existing.updatedAt\n  });\n  \n  if (githubHash !== existingHash) {\n    return {\n      json: {\n        needsUpdate: true,\n        workflowId: existing.id,\n        workflowName: workflowName,\n        githubHash,\n        existingHash,\n        workflow: githubWorkflow,\n        reason: 'Workflow structure changed'\n      }\n    };\n  } else {\n    return {\n      json: {\n        needsUpdate: false,\n        message: 'Workflow is up to date',\n        workflowId: existing.id\n      }\n    };\n  }\n} else {\n  // Workflow doesn't exist, needs to be created\n  return {\n    json: {\n      needsUpdate: true,\n      workflowId: null,\n      workflowName: workflowName,\n      workflow: githubWorkflow,\n      reason: 'Workflow does not exist'\n    }\n  };\n}"
+      },
+      "id": "check-workflow-version",
+      "name": "Check Workflow Version",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "needs-update-condition",
+              "leftValue": "={{ $json.needsUpdate }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-needs-update",
+      "name": "If Needs Update",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://content-analyser-production.up.railway.app/rest/workflows{{ $json.workflowId ? '/' + $json.workflowId : '' }}",
+        "method": "={{ $json.workflowId ? 'PUT' : 'POST' }}",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify($json.workflow) }}",
+        "options": {}
+      },
+      "id": "import-update-workflow",
+      "name": "Import/Update Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log sync result\nconst result = $input.first().json;\n\nreturn {\n  json: {\n    message: 'Workflow sync completed',\n    timestamp: new Date().toISOString(),\n    result: result\n  }\n};"
+      },
+      "id": "log-sync-result",
+      "name": "Log Sync Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 200]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Every 6 hours)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Workflow from GitHub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Workflow from GitHub": {
+      "main": [
+        [
+          {
+            "node": "Get Existing Workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Existing Workflows": {
+      "main": [
+        [
+          {
+            "node": "Check Workflow Version",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Workflow Version": {
+      "main": [
+        [
+          {
+            "node": "If Needs Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Needs Update": {
+      "main": [
+        [
+          {
+            "node": "Import/Update Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Sync Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Import/Update Workflow": {
+      "main": [
+        [
+          {
+            "node": "Log Sync Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
+
