@@ -165,7 +165,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Check if post is a video\n// Use post ID as videoId - we'll try to fetch video metadata for all posts\n// If it's not a video, the API will return an error which we'll handle gracefully\nconst post = $input.first().json;\n\n// Use post ID as videoId - this allows us to try fetching video metadata\n// The Get Video URL node will fail gracefully for non-video posts\nlet isVideo = false;\nlet videoId = post.id || null;\n\nreturn {\n  json: {\n    ...post,\n    isVideo,\n    videoId\n  }\n};"
+        "jsCode": "// Check if post is a video based on metrics and URL\nconst post = $input.first().json;\n\n// Determine if post is a video based on:\n// 1. post_video_views > 0 (most reliable indicator)\n// 2. permalink_url contains '/reel/' or '/videos/'\nconst videoViews = post.metrics?.videoViews || post.insights?.post_video_views?.values?.[0]?.value || 0;\nconst permalinkUrl = post.permalink_url || '';\n\nconst isVideo = videoViews > 0 || permalinkUrl.includes('/reel/') || permalinkUrl.includes('/videos/');\n\n// Use post ID as videoId - we'll try to fetch video metadata for all posts\n// If it's not a video, the API will return an error which we'll handle gracefully\nconst videoId = post.id || null;\n\nreturn {\n  json: {\n    ...post,\n    isVideo,\n    videoId\n  }\n};"
       },
       "id": "check-if-video",
       "name": "Check If Video",
@@ -672,7 +672,7 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2025-12-29T15:10:00.000Z",
+  "updatedAt": "2025-12-29T15:15:00.000Z",
   "versionId": "1"
 }
 
