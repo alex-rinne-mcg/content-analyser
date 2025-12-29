@@ -1,8 +1,37 @@
 # Automatische Workflow Sync Setup Guide
 
-Deze guide legt uit hoe je de automatische sync workflow instelt die workflows uit GitHub haalt en automatisch importeert/updateert in N8N.
+Deze guide legt uit hoe je workflows automatisch kunt syncen van GitHub naar Railway N8N. Er zijn twee methoden beschikbaar:
 
-## 🎯 Wat doet deze workflow?
+1. **GitHub Action (Aanbevolen)** - Directe sync via REST API bij elke push
+2. **Sync Workflow** - Periodieke sync via N8N workflow (elke 6 uur)
+
+## Methode 1: GitHub Action (Aanbevolen)
+
+De GitHub Action sync workflows automatisch bij elke push naar GitHub. Dit is de snelste en meest betrouwbare methode.
+
+**Voordelen:**
+- ✅ Directe sync (binnen seconden)
+- ✅ Geen extra N8N workflow nodig
+- ✅ Automatisch bij elke push
+- ✅ Werkt precies zoals voorheen met N8N Cloud
+
+**Setup:**
+1. Volg de [GitHub Secrets Setup Guide](GITHUB_SECRETS_SETUP.md)
+2. Test met [GitHub Action Test Guide](GITHUB_ACTION_TEST.md)
+
+**Hoe het werkt:**
+- Je wijzigt `zzuper-meta-analysis-workflow.json` lokaal
+- Je commit en pusht naar GitHub
+- GitHub Action triggert automatisch
+- Workflow wordt direct geüpdatet in Railway N8N via REST API
+
+---
+
+## Methode 2: Sync Workflow (Alternatief)
+
+De sync workflow checkt periodiek (elke 6 uur) of er updates zijn in GitHub en importeert deze automatisch.
+
+### 🎯 Wat doet deze workflow?
 
 De "Sync Workflows from GitHub" workflow:
 1. **Checkt elke 6 uur** of er updates zijn in GitHub
@@ -10,6 +39,11 @@ De "Sync Workflows from GitHub" workflow:
 3. **Vergelijkt** met bestaande workflow in N8N
 4. **Importeert/updateert** automatisch als er wijzigingen zijn
 5. **Logt** het resultaat
+
+**Wanneer gebruiken:**
+- Als backup voor GitHub Action
+- Als je periodieke sync prefereert boven directe sync
+- Als GitHub Action niet beschikbaar is
 
 ## 📋 Setup Stappen
 

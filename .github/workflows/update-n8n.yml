@@ -54,13 +54,13 @@ jobs:
             staticData: .staticData
           }')
           
-          # Update workflow via N8N API
-          echo "Sending request to: ${N8N_BASE_URL}/api/v1/workflows/${N8N_WORKFLOW_ID}"
+          # Update workflow via N8N REST API (Railway uses /rest/workflows endpoint)
+          echo "Sending request to: ${N8N_BASE_URL}/rest/workflows/${N8N_WORKFLOW_ID}"
           RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
             -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
             -H "Content-Type: application/json" \
             -d "${WORKFLOW_JSON}" \
-            "${N8N_BASE_URL}/api/v1/workflows/${N8N_WORKFLOW_ID}" 2>&1)
+            "${N8N_BASE_URL}/rest/workflows/${N8N_WORKFLOW_ID}" 2>&1)
           
           # Check if curl command succeeded
           CURL_EXIT_CODE=$?
