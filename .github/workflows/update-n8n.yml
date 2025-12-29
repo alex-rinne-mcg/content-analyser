@@ -42,8 +42,17 @@ jobs:
             exit 1
           fi
           
-          # Read workflow JSON
-          WORKFLOW_JSON=$(cat zzuper-meta-analysis-workflow.json)
+          # Read workflow JSON and filter to only allowed fields for N8N API
+          # N8N API only accepts: name, nodes, connections, settings, staticData, tags
+          # It does NOT accept: id, active, createdAt, updatedAt, versionId, etc.
+          WORKFLOW_JSON=$(cat zzuper-meta-analysis-workflow.json | jq '{
+            name: .name,
+            nodes: .nodes,
+            connections: .connections,
+            settings: .settings,
+            staticData: .staticData,
+            tags: .tags
+          }')
           
           # Update workflow via N8N API
           echo "Sending request to: ${N8N_BASE_URL}/api/v1/workflows/${N8N_WORKFLOW_ID}"
