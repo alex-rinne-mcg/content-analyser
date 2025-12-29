@@ -91,7 +91,7 @@
           "parameters": [
             {
               "name": "fields",
-              "value": "id,message,created_time,permalink_url,full_picture,comments_count,shares_count"
+              "value": "id,message,created_time,permalink_url,full_picture,comments_count,shares_count,attachments{subattachments{media{source,type}}}"
             },
             {
               "name": "limit",
@@ -200,6 +200,16 @@
     },
     {
       "parameters": {
+        "jsCode": "// Extract video source URL from post attachments\nconst items = $input.all();\n\nreturn items.map(item => {\n  const post = item.json;\n  \n  if (!post.isVideo) {\n    return {\n      json: {\n        ...post,\n        videoSourceUrl: null\n      }\n    };\n  }\n  \n  // Extract video URL from attachments\n  let videoSourceUrl = null;\n  \n  try {\n    const attachments = post.attachments?.data || [];\n    for (const attachment of attachments) {\n      const subattachments = attachment.subattachments?.data || [];\n      for (const subattachment of subattachments) {\n        const media = subattachment.media;\n        if (media && media.type === 'video' && media.source) {\n          videoSourceUrl = media.source;\n          break;\n        }\n      }\n      if (videoSourceUrl) break;\n    }\n  } catch (error) {\n    console.log('Error extracting video URL:', error);\n  }\n  \n  // Fallback: try to construct URL from post ID (may not work for Reels)\n  if (!videoSourceUrl && post.id) {\n    // This is a fallback, may not work for all video types\n    videoSourceUrl = `https://graph.facebook.com/v21.0/${post.id}/videos?fields=source`;\n  }\n  \n  return {\n    json: {\n      ...post,\n      videoSourceUrl: videoSourceUrl || post.permalink_url // Last resort: permalink\n    }\n  };\n});"
+      },
+      "id": "extract-video-url",
+      "name": "Extract Video URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1950, 300]
+    },
+    {
+      "parameters": {
         "jsCode": "// Merge video data with post (handle both video and non-video posts)\n// Process all items\nconst items = $input.all();\n\nreturn items.map(item => {\n  const post = item.json;\n  const isVideo = post.isVideo || false;\n  \n  // For video posts, we can extract the video URL from permalink_url if needed\n  // For now, we'll just use the permalink_url as the source\n  // Video metadata (length, format) is not available without making an API call\n  // which causes deprecation warnings for non-video posts\n  \n  return {\n    json: {\n      ...post,\n      isVideo,\n      source: isVideo ? post.permalink_url || null : null,\n      length: null, // Not available without API call\n      format: null // Not available without API call\n    }\n  };\n});"
       },
       "id": "merge-video-data",
@@ -249,7 +259,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $json.permalink_url }}",
+        "url": "={{ $json.videoSourceUrl }}",
         "options": {
           "response": {
             "responseFormat": "file",
@@ -289,7 +299,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Prepare video file for Gemini API with memory optimization\nconst item = $input.first();\n\n// Get video file from binary data\nconst videoFile = item.binary?.video || item.binary?.data;\n\nif (!videoFile) {\n  // If no video file, return post data without video\n  return {\n    json: {\n      ...item.json,\n      hasVideo: false,\n      videoError: 'No video file found'\n    }\n  };\n}\n\n// Check file size (Gemini has a 2GB limit, but we should keep it smaller for memory)\n// If video is too large (>50MB), skip video analysis\nconst maxSizeBytes = 50 * 1024 * 1024; // 50MB\nconst fileSize = videoFile.data?.length || 0;\n\nif (fileSize > maxSizeBytes) {\n  return {\n    json: {\n      ...item.json,\n      hasVideo: false,\n      videoError: `Video too large (${Math.round(fileSize / 1024 / 1024)}MB). Maximum 50MB for analysis.`\n    }\n  };\n}\n\n// For very large videos, we might need to process in chunks\n// But for now, let's try to convert directly with error handling\ntry {\n  // Convert to base64\n  // Note: videoFile.data is already base64 in N8N binary format\n  const base64Video = videoFile.data;\n  const mimeType = videoFile.mimeType || 'video/mp4';\n  \n  // Additional check: if base64 string is too long, it might cause memory issues\n  if (base64Video && base64Video.length > 100000000) { // ~100MB base64 string\n    return {\n      json: {\n        ...item.json,\n        hasVideo: false,\n        videoError: 'Video base64 encoding too large for memory. Video may be too long.'\n      }\n    };\n  }\n  \n  return {\n    json: {\n      ...item.json,\n      videoBase64: base64Video,\n      videoMimeType: mimeType,\n      hasVideo: true\n    }\n  };\n} catch (error) {\n  return {\n    json: {\n      ...item.json,\n      hasVideo: false,\n      videoError: `Error processing video: ${error.message}`\n    }\n  };\n}"
+        "jsCode": "// Prepare video file for Gemini API with filesystem optimization\nconst item = $input.first();\n\n// Get video file from binary data\nconst videoFile = item.binary?.video || item.binary?.data;\n\nif (!videoFile) {\n  return {\n    json: {\n      ...item.json,\n      hasVideo: false,\n      videoError: 'No video file found'\n    }\n  };\n}\n\n// Check file size - allow up to 100MB\nconst maxSizeBytes = 100 * 1024 * 1024; // 100MB\nconst fileSize = videoFile.data?.length || 0;\n\nif (fileSize > maxSizeBytes) {\n  return {\n    json: {\n      ...item.json,\n      hasVideo: false,\n      videoError: `Video too large (${Math.round(fileSize / 1024 / 1024)}MB). Maximum 100MB for analysis.`\n    }\n  };\n}\n\ntry {\n  // In filesystem mode, videoFile.data is a file path or buffer\n  // We need to read it properly\n  let base64Video;\n  \n  if (typeof videoFile.data === 'string' && videoFile.data.startsWith('/')) {\n    // File path - read from disk\n    const fs = require('fs');\n    const videoBuffer = fs.readFileSync(videoFile.data);\n    base64Video = videoBuffer.toString('base64');\n  } else if (Buffer.isBuffer(videoFile.data)) {\n    // Already a buffer\n    base64Video = videoFile.data.toString('base64');\n  } else {\n    // Assume it's already base64 string\n    base64Video = videoFile.data;\n  }\n  \n  const mimeType = videoFile.mimeType || 'video/mp4';\n  \n  // Check base64 string length (should be ~33% larger than original)\n  if (base64Video.length > 150000000) { // ~150MB base64 for 100MB video\n    return {\n      json: {\n        ...item.json,\n        hasVideo: false,\n        videoError: 'Video base64 encoding too large. Consider compressing video first.'\n      }\n    };\n  }\n  \n  return {\n    json: {\n      ...item.json,\n      videoBase64: base64Video,\n      videoMimeType: mimeType,\n      hasVideo: true,\n      videoSizeMB: Math.round(fileSize / 1024 / 1024)\n    }\n  };\n} catch (error) {\n  return {\n    json: {\n      ...item.json,\n      hasVideo: false,\n      videoError: `Error processing video: ${error.message}`\n    }\n  };\n}"
       },
       "id": "prepare-video-gemini",
       "name": "Prepare Video for Gemini",
@@ -677,6 +687,17 @@
       "main": [
         [
           {
+            "node": "Extract Video URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Video URL": {
+      "main": [
+        [
+          {
             "node": "Merge Video Data",
             "type": "main",
             "index": 0
@@ -864,7 +885,7 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2025-12-29T16:45:00.000Z",
+  "updatedAt": "2025-12-29T17:00:00.000Z",
   "versionId": "1"
 }
 
