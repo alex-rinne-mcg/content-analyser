@@ -185,6 +185,107 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-video-condition",
+              "leftValue": "={{ $json.isVideo }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "split-video-nonvideo",
+      "name": "Split Video/Non-Video",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2200, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v21.0/{{ $json.videoId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "source"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "responseFormat": "file",
+            "responsePropertyName": "video"
+          }
+        },
+        "continueOnFail": true
+      },
+      "id": "download-video",
+      "name": "Download Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2300, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Header Auth account 4"
+        }
+      },
+      "onError": "continue"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.full_picture }}",
+        "options": {
+          "response": {
+            "responseFormat": "file",
+            "responsePropertyName": "image"
+          }
+        },
+        "continueOnFail": true
+      },
+      "id": "download-image",
+      "name": "Download Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2300, 400],
+      "onError": "continue"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare video file for Gemini API\nconst item = $input.first();\n\n// Get video file from binary data\nconst videoFile = item.binary?.video || item.binary?.data;\n\nif (!videoFile) {\n  // If no video file, return post data without video\n  return {\n    json: {\n      ...item.json,\n      hasVideo: false,\n      videoError: 'No video file found'\n    }\n  };\n}\n\n// Convert to base64\nconst base64Video = videoFile.data;\nconst mimeType = videoFile.mimeType || 'video/mp4';\n\nreturn {\n  json: {\n    ...item.json,\n    videoBase64: base64Video,\n    videoMimeType: mimeType,\n    hasVideo: true\n  }\n};"
+      },
+      "id": "prepare-video-gemini",
+      "name": "Prepare Video for Gemini",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2400, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare image file for Gemini API\nconst item = $input.first();\n\n// Get image file from binary data\nconst imageFile = item.binary?.image || item.binary?.data;\n\nif (!imageFile) {\n  // If no image file, return post data without image\n  return {\n    json: {\n      ...item.json,\n      hasImage: false,\n      imageError: 'No image file found'\n    }\n  };\n}\n\n// Convert to base64\nconst base64Image = imageFile.data;\nconst mimeType = imageFile.mimeType || 'image/jpeg';\n\nreturn {\n  json: {\n    ...item.json,\n    imageBase64: base64Image,\n    imageMimeType: mimeType,\n    hasImage: true\n  }\n};"
+      },
+      "id": "prepare-image-gemini",
+      "name": "Prepare Image for Gemini",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2400, 400]
+    },
+    {
+      "parameters": {
         "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={{ $credentials.geminiApi.apiKey }}",
         "sendQuery": false,
         "sendBody": true,
@@ -193,17 +294,17 @@
           "parameters": [
             {
               "name": "contents",
-              "value": "={{ JSON.stringify([{\n  parts: [{\n    text: `Analyze this ZZUPER Facebook post and provide insights in JSON format.\n\nPost Details:\n- ID: ${$json.id}\n- Type: ${$json.isVideo ? 'Video' : 'Non-Video'}\n- Created: ${$json.created_time}\n- Message: ${$json.message || 'No text'}\n- URL: ${$json.permalink_url}\n\nPerformance Metrics:\n- Impressions: ${$json.metrics.impressions}\n- Reach: ${$json.metrics.reach}\n- Reactions: ${$json.metrics.reactions}\n- Comments: ${$json.metrics.comments}\n- Shares: ${$json.metrics.shares}\n- Clicks: ${$json.metrics.clicks}\n- Performance Score: ${$json.performanceScore}/10\n- Category: ${$json.category}\n\n${$json.isVideo ? `Video URL: ${$json.source || 'N/A'}\nVideo Length: ${$json.length || 'N/A'} seconds` : ''}\n\n${$json.isVideo ? `\nFor VIDEO posts, analyze:\n1. Hook effectiveness (first 3 seconds)\n2. Pacing and retention drivers\n3. Completion factors\n4. Visual storytelling\n5. Audio impact\n6. Copy effectiveness\n7. Shareability factors\n8. Audience resonance\n9. Engagement triggers\n10. Replication framework\n` : `\nFor NON-VIDEO posts, analyze:\n1. Copy effectiveness\n2. Shareability factors\n3. Audience resonance\n4. Format effectiveness\n5. Engagement triggers\n6. Replication framework\n`}\n\nReturn a JSON object with these fields:\n{\n  \"hookEffectiveness\": \"...\",\n  \"pacingRetention\": \"...\",\n  \"completionFactors\": \"...\",\n  \"visualStorytelling\": \"...\",\n  \"audioImpact\": \"...\",\n  \"copyEffectiveness\": \"...\",\n  \"shareabilityFactors\": \"...\",\n  \"audienceResonance\": \"...\",\n  \"engagementTriggers\": \"...\",\n  \"replicationFramework\": \"...\",\n  \"formatEffectiveness\": \"...\"\n}\n\nFor non-video posts, set video-specific fields to \"N/A\".`\n    }\n  }]\n}]) }}"
+              "value": "={{ (() => {\n  const parts = [{\n    text: `Analyze this ZZUPER Facebook VIDEO post and provide insights in JSON format.\\n\\nPost Details:\\n- ID: ${$json.id}\\n- Type: Video\\n- Created: ${$json.created_time}\\n- Message: ${$json.message || 'No text'}\\n- URL: ${$json.permalink_url}\\n\\nPerformance Metrics:\\n- Impressions: ${$json.metrics.impressions}\\n- Reach: ${$json.metrics.reach}\\n- Reactions: ${$json.metrics.reactions}\\n- Comments: ${$json.metrics.comments}\\n- Shares: ${$json.metrics.shares}\\n- Clicks: ${$json.metrics.clicks}\\n- Performance Score: ${$json.performanceScore}/10\\n- Category: ${$json.category}\\n- Video Views: ${$json.metrics.videoViews || 0}\\n\\nFor this VIDEO post, analyze:\\n1. Hook effectiveness (first 3 seconds)\\n2. Pacing and retention drivers\\n3. Completion factors\\n4. Visual storytelling\\n5. Audio impact\\n6. Copy effectiveness\\n7. Shareability factors\\n8. Audience resonance\\n9. Engagement triggers\\n10. Replication framework\\n\\nReturn a JSON object with these fields:\\n{\\n  \\\"hookEffectiveness\\\": \\\"...\\\",\\n  \\\"pacingRetention\\\": \\\"...\\\",\\n  \\\"completionFactors\\\": \\\"...\\\",\\n  \\\"visualStorytelling\\\": \\\"...\\\",\\n  \\\"audioImpact\\\": \\\"...\\\",\\n  \\\"copyEffectiveness\\\": \\\"...\\\",\\n  \\\"shareabilityFactors\\\": \\\"...\\\",\\n  \\\"audienceResonance\\\": \\\"...\\\",\\n  \\\"engagementTriggers\\\": \\\"...\\\",\\n  \\\"replicationFramework\\\": \\\"...\\\",\\n  \\\"formatEffectiveness\\\": \\\"...\\\"\\n}`\n  }];\n  \n  if ($json.hasVideo && $json.videoBase64) {\n    parts.push({\n      inlineData: {\n        mimeType: $json.videoMimeType || 'video/mp4',\n        data: $json.videoBase64\n      }\n    });\n  }\n  \n  return JSON.stringify([{ parts }]);\n})() }}"
             }
           ]
         },
         "options": {}
       },
-      "id": "ai-analysis",
-      "name": "AI Analysis",
+      "id": "ai-analysis-video",
+      "name": "AI Analysis (Video)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2250, 300],
+      "position": [2500, 200],
       "credentials": {
         "genericCredentialType": {
           "name": "Gemini API"
@@ -212,7 +313,34 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parse AI response from Gemini\nconst response = $input.first().json;\nconst post = $('Merge Video Data').item.json;\n\nlet aiInsights = {};\n\ntry {\n  const content = response.candidates?.[0]?.content?.parts?.[0]?.text || '';\n  \n  // Extract JSON from response (might be wrapped in markdown code blocks)\n  let jsonText = content.trim();\n  if (jsonText.startsWith('```json')) {\n    jsonText = jsonText.replace(/```json\\s*/g, '').replace(/```\\s*/g, '');\n  } else if (jsonText.startsWith('```')) {\n    jsonText = jsonText.replace(/```\\s*/g, '');\n  }\n  \n  aiInsights = JSON.parse(jsonText);\n} catch (error) {\n  // Fallback: create structured object with raw text\n  aiInsights = {\n    rawAnalysis: response.candidates?.[0]?.content?.parts?.[0]?.text || 'Analysis failed',\n    error: error.message\n  };\n}\n\nreturn {\n  json: {\n    ...post,\n    aiInsights\n  }\n};"
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={{ $credentials.geminiApi.apiKey }}",
+        "sendQuery": false,
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "contents",
+              "value": "={{ (() => {\n  const parts = [{\n    text: `Analyze this ZZUPER Facebook NON-VIDEO post (text + image) and provide insights in JSON format.\\n\\nPost Details:\\n- ID: ${$json.id}\\n- Type: Non-Video\\n- Created: ${$json.created_time}\\n- Message: ${$json.message || 'No text'}\\n- URL: ${$json.permalink_url}\\n\\nPerformance Metrics:\\n- Impressions: ${$json.metrics.impressions}\\n- Reach: ${$json.metrics.reach}\\n- Reactions: ${$json.metrics.reactions}\\n- Comments: ${$json.metrics.comments}\\n- Shares: ${$json.metrics.shares}\\n- Clicks: ${$json.metrics.clicks}\\n- Performance Score: ${$json.performanceScore}/10\\n- Category: ${$json.category}\\n\\nFor this NON-VIDEO post, analyze:\\n1. Copy effectiveness\\n2. Image effectiveness (visual appeal, relevance, clarity)\\n3. Shareability factors\\n4. Audience resonance\\n5. Format effectiveness\\n6. Engagement triggers\\n7. Replication framework\\n\\nReturn a JSON object with these fields:\\n{\\n  \\\"copyEffectiveness\\\": \\\"...\\\",\\n  \\\"imageEffectiveness\\\": \\\"...\\\",\\n  \\\"shareabilityFactors\\\": \\\"...\\\",\\n  \\\"audienceResonance\\\": \\\"...\\\",\\n  \\\"formatEffectiveness\\\": \\\"...\\\",\\n  \\\"engagementTriggers\\\": \\\"...\\\",\\n  \\\"replicationFramework\\\": \\\"...\\\",\\n  \\\"hookEffectiveness\\\": \\\"N/A\\\",\\n  \\\"pacingRetention\\\": \\\"N/A\\\",\\n  \\\"completionFactors\\\": \\\"N/A\\\",\\n  \\\"visualStorytelling\\\": \\\"N/A\\\",\\n  \\\"audioImpact\\\": \\\"N/A\\\"\\n}`\n  }];\n  \n  if ($json.hasImage && $json.imageBase64) {\n    parts.push({\n      inlineData: {\n        mimeType: $json.imageMimeType || 'image/jpeg',\n        data: $json.imageBase64\n      }\n    });\n  }\n  \n  return JSON.stringify([{ parts }]);\n})() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ai-analysis-nonvideo",
+      "name": "AI Analysis (Non-Video)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2500, 400],
+      "credentials": {
+        "genericCredentialType": {
+          "name": "Gemini API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI response from Gemini (handles both video and non-video posts)\nconst items = $input.all();\n\nreturn items.map(item => {\n  const response = item.json;\n  \n  // Get original post data from the previous AI Analysis node\n  // The AI Analysis nodes receive data from Prepare Video/Image nodes\n  // We need to get the post data that was passed through\n  let postData = {};\n  \n  // Try to get from video path first\n  try {\n    const prepareVideo = $('Prepare Video for Gemini');\n    if (prepareVideo && prepareVideo.item) {\n      const videoData = prepareVideo.item.json;\n      // Remove temporary video fields\n      const { videoBase64, videoMimeType, hasVideo, videoError, ...cleanData } = videoData;\n      postData = cleanData;\n    }\n  } catch (e) {\n    // Try non-video path\n    try {\n      const prepareImage = $('Prepare Image for Gemini');\n      if (prepareImage && prepareImage.item) {\n        const imageData = prepareImage.item.json;\n        // Remove temporary image fields\n        const { imageBase64, imageMimeType, hasImage, imageError, ...cleanData } = imageData;\n        postData = cleanData;\n      }\n    } catch (e2) {\n      // Fallback: try to extract from response or use empty object\n      postData = {};\n    }\n  }\n  \n  let aiInsights = {};\n  \n  try {\n    // Gemini response structure\n    const content = response.candidates?.[0]?.content?.parts?.[0]?.text || '';\n    \n    // Extract JSON from response (might be wrapped in markdown code blocks)\n    let jsonText = content.trim();\n    if (jsonText.startsWith('```json')) {\n      jsonText = jsonText.replace(/```json\\s*/g, '').replace(/```\\s*/g, '');\n    } else if (jsonText.startsWith('```')) {\n      jsonText = jsonText.replace(/```\\s*/g, '');\n    }\n    \n    aiInsights = JSON.parse(jsonText);\n  } catch (error) {\n    // Fallback: create structured object with raw text\n    aiInsights = {\n      rawAnalysis: response.candidates?.[0]?.content?.parts?.[0]?.text || 'Analysis failed',\n      error: error.message\n    };\n  }\n  \n  // Merge post data with AI insights\n  // If postData is empty, we'll still have aiInsights\n  return {\n    json: {\n      ...postData,\n      aiInsights\n    }\n  };\n});"
       },
       "id": "parse-ai-response",
       "name": "Parse AI Response",
@@ -537,14 +665,87 @@
       "main": [
         [
           {
-            "node": "AI Analysis",
+            "node": "Split Video/Non-Video",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "AI Analysis": {
+    "Split Video/Non-Video": {
+      "main": [
+        [
+          {
+            "node": "Download Video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Download Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Video": {
+      "main": [
+        [
+          {
+            "node": "Prepare Video for Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Image": {
+      "main": [
+        [
+          {
+            "node": "Prepare Image for Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Video for Gemini": {
+      "main": [
+        [
+          {
+            "node": "AI Analysis (Video)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Image for Gemini": {
+      "main": [
+        [
+          {
+            "node": "AI Analysis (Non-Video)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Analysis (Video)": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Analysis (Non-Video)": {
       "main": [
         [
           {
@@ -629,7 +830,7 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2025-12-29T15:40:00.000Z",
+  "updatedAt": "2025-12-29T16:00:00.000Z",
   "versionId": "1"
 }
 
