@@ -175,7 +175,7 @@
             {
               "id": "filter-engagement",
               "leftValue": "={{ $json.metrics.impressions }}",
-              "rightValue": 100,
+              "rightValue": 5,
               "operator": {
                 "type": "number",
                 "operation": "largerEqual"
@@ -712,7 +712,7 @@
   "staticData": null,
   "tags": [],
   "triggerCount": 0,
-  "updatedAt": "2025-12-29T14:45:00.000Z",
+  "updatedAt": "2025-12-29T14:50:00.000Z",
   "versionId": "1"
 }
 
