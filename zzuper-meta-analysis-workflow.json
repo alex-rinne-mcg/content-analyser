@@ -1,1 +1,630 @@
-
+{
+  "name": "ZZUPER Meta Post Analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every Monday 9 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "1ye1nbaT4GyREOJsWuiXVavc_nvXHcDMLU7hqwCqapqY",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Tracker",
+          "mode": "name"
+        },
+        "options": {
+          "range": "A2:C2"
+        }
+      },
+      "id": "read-tracker",
+      "name": "Read Tracker",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trackerData = $input.item.json;\nconst lastRun = trackerData['Last Run Date'];\n\nlet sinceDate;\nif (lastRun && lastRun !== '') {\n  sinceDate = new Date(lastRun);\n} else {\n  sinceDate = new Date();\n  sinceDate.setDate(sinceDate.getDate() - 30);\n}\n\nconst untilDate = new Date();\nconst sinceTimestamp = Math.floor(sinceDate.getTime() / 1000);\nconst untilTimestamp = Math.floor(untilDate.getTime() / 1000);\n\nfunction getWeekNumber(date) {\n  const onejan = new Date(date.getFullYear(), 0, 1);\n  const millisecsInDay = 86400000;\n  return Math.ceil((((date - onejan) / millisecsInDay) + onejan.getDay() + 1) / 7);\n}\n\nfunction getWeekStart(date) {\n  const d = new Date(date);\n  const day = d.getDay();\n  const diff = d.getDate() - day + (day === 0 ? -6 : 1);\n  return new Date(d.setDate(diff));\n}\n\nreturn {\n  json: {\n    sinceTimestamp: sinceTimestamp,\n    untilTimestamp: untilTimestamp,\n    sinceDate: sinceDate.toISOString(),\n    untilDate: untilDate.toISOString(),\n    weekNumber: getWeekNumber(untilDate),\n    weekStartDate: getWeekStart(untilDate).toISOString(),\n    lastPostId: trackerData['Last Post ID Analyzed'] || ''\n  }\n};"
+      },
+      "id": "calculate-date-range",
+      "name": "Calculate Date Range",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.facebook.com/v19.0/185121598021398/posts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,message,created_time,type,status_type,permalink_url,shares,attachments{media,type,url,subattachments}"
+            },
+            {
+              "name": "since",
+              "value": "={{ $json.sinceTimestamp }}"
+            },
+            {
+              "name": "until",
+              "value": "={{ $json.untilTimestamp }}"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-page-posts",
+      "name": "Get Page Posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const posts = $input.item.json.data || [];\nconst lastPostId = $node[\"Calculate Date Range\"].json.lastPostId;\n\nlet newPosts = posts;\nif (lastPostId) {\n  const lastIndex = posts.findIndex(p => p.id === lastPostId);\n  if (lastIndex > -1) {\n    newPosts = posts.slice(0, lastIndex);\n  }\n}\n\nif (newPosts.length === 0) {\n  return null;\n}\n\nreturn newPosts.map(post => ({ json: post }));"
+      },
+      "id": "filter-new-posts",
+      "name": "Filter Only New Posts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/v19.0/{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,message,created_time,full_picture,reactions.summary(true),comments.summary(true),shares,insights.metric(post_impressions,post_impressions_unique,post_engaged_users,post_clicks,post_video_views,post_video_view_time,post_video_complete_views_30s,post_video_avg_time_watched)"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-post-insights",
+      "name": "Get Post Insights",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const post = $input.item.json;\nconst dateInfo = $node[\"Calculate Date Range\"].json;\nconst originalPost = $node[\"Filter Only New Posts\"].json;\n\nconst reactions = post.reactions?.summary?.total_count || 0;\nconst comments = post.comments?.summary?.total_count || 0;\nconst shares = post.shares?.count || 0;\n\nconst insights = {};\nif (post.insights?.data) {\n  post.insights.data.forEach(metric => {\n    insights[metric.name] = metric.values[0]?.value || 0;\n  });\n}\n\nconst impressions = insights.post_impressions || 0;\nconst reach = insights.post_impressions_unique || 0;\nconst engagement = insights.post_engaged_users || 0;\nconst clicks = insights.post_clicks || 0;\n\nconst attachments = originalPost.attachments?.data || [];\nconst isVideo = attachments[0]?.type === 'video_inline' || attachments[0]?.media_type === 'video';\nconst videoViews = insights.post_video_views || 0;\nconst videoViewTime = insights.post_video_view_time || 0;\nconst videoCompleteViews = insights.post_video_complete_views_30s || 0;\nconst avgWatchTime = insights.post_video_avg_time_watched || 0;\n\nconst engagementRate = impressions > 0 ? ((reactions + comments + shares) / impressions * 100).toFixed(2) : 0;\nconst clickRate = impressions > 0 ? (clicks / impressions * 100).toFixed(2) : 0;\nconst shareRate = impressions > 0 ? (shares / impressions * 100).toFixed(4) : 0;\n\nconst completionRate = videoViews > 0 ? (videoCompleteViews / videoViews * 100).toFixed(2) : 0;\nconst avgWatchPercent = avgWatchTime > 0 && videoViews > 0 ? (avgWatchTime / 30 * 100).toFixed(2) : 0;\n\nconst performanceScore = (\n  (parseFloat(engagementRate) * 0.4) +\n  (parseFloat(shareRate) * 100 * 0.3) +\n  (parseFloat(clickRate) * 0.2) +\n  (isVideo ? parseFloat(completionRate) * 0.1 : 0)\n).toFixed(2);\n\nconst category = performanceScore > 10 ? 'exceptional' : \n                performanceScore > 5 ? 'good' : \n                performanceScore > 2 ? 'average' : 'poor';\n\nconst mediaUrl = attachments[0]?.media?.source || post.full_picture || '';\n\nreturn {\n  json: {\n    postId: post.id,\n    postUrl: originalPost.permalink_url || `https://facebook.com/${post.id}`,\n    createdDate: post.created_time,\n    postType: originalPost.type || originalPost.status_type || 'status',\n    postCopy: (post.message || '').substring(0, 500),\n    hasVideo: isVideo,\n    mediaUrl: mediaUrl,\n    impressions: impressions,\n    reach: reach,\n    reactions: reactions,\n    comments: comments,\n    shares: shares,\n    clicks: clicks,\n    engagementRate: parseFloat(engagementRate),\n    clickRate: parseFloat(clickRate),\n    shareRate: parseFloat(shareRate),\n    performanceScore: parseFloat(performanceScore),\n    category: category,\n    videoViews: videoViews,\n    videoCompletionRate: parseFloat(completionRate),\n    avgWatchTime: avgWatchTime,\n    avgWatchPercent: parseFloat(avgWatchPercent),\n    analyzedDate: new Date().toISOString(),\n    weekNumber: dateInfo.weekNumber,\n    fullMessage: post.message || '',\n    contextForAI: `Post Type: ${originalPost.type || originalPost.status_type}\\nCreated: ${post.created_time}\\nPerformance Score: ${performanceScore}/10 (${category})\\nImpressions: ${impressions}\\nEngagement Rate: ${engagementRate}%\\nShare Rate: ${shareRate}%\\n${isVideo ? `\\nVideo Completion Rate: ${completionRate}%\\nAvg Watch %: ${avgWatchPercent}%\\nViews: ${videoViews}` : ''}`\n  }\n};"
+      },
+      "id": "calculate-metrics",
+      "name": "Calculate Performance Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.impressions }}",
+              "operation": "larger",
+              "value2": 100
+            }
+          ]
+        }
+      },
+      "id": "if-has-engagement",
+      "name": "IF Has Engagement",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.hasVideo }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-is-video",
+      "name": "IF Is Video",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/v19.0/{{ $json.postId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "source"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-video-source",
+      "name": "Get Video Source",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2220,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"contents\": [{\n    \"parts\": [\n      ...($json.hasVideo && $node[\"Get Video Source\"]?.json?.source ? [{\"fileData\": {\"mimeType\": \"video/mp4\", \"fileUri\": $node[\"Get Video Source\"].json.source}}] : []),\n      {\n        \"text\": `Analyze this Meta organic post (Performance: ${$json.category}):\\n\\n${$json.contextForAI}\\n\\nPost Copy:\\n${$json.fullMessage}\\n\\n${$json.hasVideo ? 'Video Analysis:\\n1. Hook effectiveness (first 3 seconds)\\n2. Pacing and editing style\\n3. Key retention drivers\\n4. Completion factors (' + $json.videoCompletionRate + '% completed)\\n5. Visual storytelling elements\\n6. Audio/music impact\\n\\n' : ''}Post Analysis:\\n7. Copy effectiveness\\n8. Shareability factors (${$json.shareRate}% share rate)\\n9. Audience resonance\\n10. Format effectiveness\\n11. Engagement triggers\\n12. Replication framework\\n\\nProvide concise, actionable insights. Format as JSON with keys: ${$json.hasVideo ? 'hook_analysis, pacing_style, retention_drivers, completion_factors, visual_storytelling, audio_impact, ' : ''}copy_effectiveness, shareability_analysis, audience_resonance, format_effectiveness, engagement_triggers, replication_framework`\n      }\n    ]\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.7,\n    \"maxOutputTokens\": 2000\n  }\n} }}",
+        "options": {}
+      },
+      "id": "ai-analysis",
+      "name": "AI Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2440,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiResponse = $input.item.json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';\nconst postData = $node[\"Calculate Performance Metrics\"].json;\n\nlet analysis = {};\ntry {\n  const jsonMatch = aiResponse.match(/\\{[\\s\\S]*\\}/);\n  analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : {};\n} catch (e) {\n  console.error('Failed to parse AI response:', e);\n  analysis = { raw_response: aiResponse };\n}\n\nreturn {\n  json: {\n    postId: postData.postId,\n    postUrl: postData.postUrl,\n    hookAnalysis: analysis.hook_analysis || '',\n    pacingStyle: analysis.pacing_style || '',\n    retentionDrivers: analysis.retention_drivers || '',\n    completionFactors: analysis.completion_factors || '',\n    visualStorytelling: analysis.visual_storytelling || '',\n    audioImpact: analysis.audio_impact || '',\n    copyEffectiveness: analysis.copy_effectiveness || '',\n    shareabilityAnalysis: analysis.shareability_analysis || '',\n    audienceResonance: analysis.audience_resonance || '',\n    formatEffectiveness: analysis.format_effectiveness || '',\n    engagementTriggers: analysis.engagement_triggers || '',\n    replicationFramework: analysis.replication_framework || '',\n    keyTakeaways: JSON.stringify(analysis)\n  }\n};"
+      },
+      "id": "parse-ai-analysis",
+      "name": "Parse AI Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2660,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1ye1nbaT4GyREOJsWuiXVavc_nvXHcDMLU7hqwCqapqY",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Post Performance Data",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Post ID": "={{ $json.postId }}",
+            "Post URL": "={{ $json.postUrl }}",
+            "Created Date": "={{ $json.createdDate }}",
+            "Post Type": "={{ $json.postType }}",
+            "Post Copy": "={{ $json.postCopy }}",
+            "Has Video": "={{ $json.hasVideo }}",
+            "Media URL": "={{ $json.mediaUrl }}",
+            "Impressions": "={{ $json.impressions }}",
+            "Reach": "={{ $json.reach }}",
+            "Reactions": "={{ $json.reactions }}",
+            "Comments": "={{ $json.comments }}",
+            "Shares": "={{ $json.shares }}",
+            "Clicks": "={{ $json.clicks }}",
+            "Engagement Rate (%)": "={{ $json.engagementRate }}",
+            "Click Rate (%)": "={{ $json.clickRate }}",
+            "Share Rate (%)": "={{ $json.shareRate }}",
+            "Performance Score": "={{ $json.performanceScore }}",
+            "Category": "={{ $json.category }}",
+            "Video Views": "={{ $json.videoViews }}",
+            "Video Completion Rate (%)": "={{ $json.videoCompletionRate }}",
+            "Avg Watch Time": "={{ $json.avgWatchTime }}",
+            "Avg Watch Percent (%)": "={{ $json.avgWatchPercent }}",
+            "Analyzed Date": "={{ $json.analyzedDate }}",
+            "Week Number": "={{ $json.weekNumber }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "append-performance-data",
+      "name": "Append to Post Performance Data",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        2880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1ye1nbaT4GyREOJsWuiXVavc_nvXHcDMLU7hqwCqapqY",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "AI Analysis",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Post ID": "={{ $json.postId }}",
+            "Post URL": "={{ $json.postUrl }}",
+            "Hook Analysis": "={{ $json.hookAnalysis }}",
+            "Pacing Style": "={{ $json.pacingStyle }}",
+            "Retention Drivers": "={{ $json.retentionDrivers }}",
+            "Completion Factors": "={{ $json.completionFactors }}",
+            "Visual Storytelling": "={{ $json.visualStorytelling }}",
+            "Audio Impact": "={{ $json.audioImpact }}",
+            "Copy Effectiveness": "={{ $json.copyEffectiveness }}",
+            "Shareability Analysis": "={{ $json.shareabilityAnalysis }}",
+            "Audience Resonance": "={{ $json.audienceResonance }}",
+            "Format Effectiveness": "={{ $json.formatEffectiveness }}",
+            "Engagement Triggers": "={{ $json.engagementTriggers }}",
+            "Replication Framework": "={{ $json.replicationFramework }}",
+            "Key Takeaways": "={{ $json.keyTakeaways }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "append-ai-analysis",
+      "name": "Append to AI Analysis",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        2880,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allPosts = $('Calculate Performance Metrics').all();\nconst dateInfo = $('Calculate Date Range').json;\n\nif (!allPosts || allPosts.length === 0) {\n  return { json: { noPosts: true } };\n}\n\nconst totalPosts = allPosts.length;\nconst avgScore = allPosts.reduce((sum, p) => sum + p.json.performanceScore, 0) / totalPosts;\nconst avgEngagement = allPosts.reduce((sum, p) => sum + p.json.engagementRate, 0) / totalPosts;\nconst avgShareRate = allPosts.reduce((sum, p) => sum + p.json.shareRate, 0) / totalPosts;\n\nconst bestPost = allPosts.reduce((best, current) => {\n  return current.json.performanceScore > best.json.performanceScore ? current : best;\n});\n\nconst topPerformers = allPosts.filter(p => p.json.category === 'exceptional' || p.json.category === 'good');\nconst poorPerformers = allPosts.filter(p => p.json.category === 'poor' || p.json.category === 'average');\n\nconst aiInsights = $('Parse AI Analysis').all();\n\nconst winningHooks = aiInsights\n  .filter(a => topPerformers.some(p => p.json.postId === a.json.postId))\n  .map(a => a.json.hookAnalysis)\n  .filter(h => h)\n  .slice(0, 3)\n  .join(' | ');\n\nconst winningCopyStyles = aiInsights\n  .filter(a => topPerformers.some(p => p.json.postId === a.json.postId))\n  .map(a => a.json.copyEffectiveness)\n  .filter(c => c)\n  .slice(0, 3)\n  .join(' | ');\n\nconst topShareabilityFactors = aiInsights\n  .filter(a => topPerformers.some(p => p.json.postId === a.json.postId))\n  .map(a => a.json.shareabilityAnalysis)\n  .filter(s => s)\n  .slice(0, 3)\n  .join(' | ');\n\nconst commonFailures = aiInsights\n  .filter(a => poorPerformers.some(p => p.json.postId === a.json.postId))\n  .map(a => `${a.json.hookAnalysis} | ${a.json.copyEffectiveness}`)\n  .filter(f => f && f !== ' | ')\n  .slice(0, 3)\n  .join(' | ');\n\nconst videoCount = allPosts.filter(p => p.json.hasVideo).length;\nconst formatDist = `Video: ${videoCount} | Image/Text: ${totalPosts - videoCount}`;\n\nconst brief = `MCG META CONTENT PLAYBOOK - Week ${dateInfo.weekNumber}\\n\\n📊 PERFORMANCE SUMMARY\\nPosts Analyzed: ${totalPosts}\\nAvg Score: ${avgScore.toFixed(2)}/10\\nAvg Engagement: ${avgEngagement.toFixed(2)}%\\nAvg Share Rate: ${avgShareRate.toFixed(4)}%\\n\\n🏆 BEST PERFORMER\\n${bestPost.json.postUrl}\\nScore: ${bestPost.json.performanceScore}/10 | Engagement: ${bestPost.json.engagementRate}%\\n\\n✅ WINNING PATTERNS\\nVideo Hooks: ${winningHooks || 'N/A'}\\nCopy Styles: ${winningCopyStyles || 'N/A'}\\nShareability: ${topShareabilityFactors || 'N/A'}\\n\\n❌ AVOID\\n${commonFailures || 'N/A'}\\n\\n📋 FORMAT PERFORMANCE\\n${formatDist}`;\n\nreturn {\n  json: {\n    weekStartDate: dateInfo.weekStartDate,\n    weekNumber: dateInfo.weekNumber,\n    postsAnalyzed: totalPosts,\n    avgPerformanceScore: parseFloat(avgScore.toFixed(2)),\n    avgEngagementRate: parseFloat(avgEngagement.toFixed(2)),\n    avgShareRate: parseFloat(avgShareRate.toFixed(4)),\n    bestPostUrl: bestPost.json.postUrl,\n    bestPostScore: bestPost.json.performanceScore,\n    winningVideoHooks: winningHooks,\n    winningCopyStyles: winningCopyStyles,\n    topShareabilityFactors: topShareabilityFactors,\n    commonFailures: commonFailures,\n    formatDistribution: formatDist,\n    generatedBrief: brief\n  }\n};"
+      },
+      "id": "generate-weekly-summary",
+      "name": "Generate Weekly Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1ye1nbaT4GyREOJsWuiXVavc_nvXHcDMLU7hqwCqapqY",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Weekly Patterns",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Week Start Date": "={{ $json.weekStartDate }}",
+            "Week Number": "={{ $json.weekNumber }}",
+            "Posts Analyzed": "={{ $json.postsAnalyzed }}",
+            "Avg Performance Score": "={{ $json.avgPerformanceScore }}",
+            "Avg Engagement Rate": "={{ $json.avgEngagementRate }}",
+            "Avg Share Rate": "={{ $json.avgShareRate }}",
+            "Best Post URL": "={{ $json.bestPostUrl }}",
+            "Best Post Score": "={{ $json.bestPostScore }}",
+            "Winning Video Hooks": "={{ $json.winningVideoHooks }}",
+            "Winning Copy Styles": "={{ $json.winningCopyStyles }}",
+            "Top Shareability Factors": "={{ $json.topShareabilityFactors }}",
+            "Common Failures": "={{ $json.commonFailures }}",
+            "Format Distribution": "={{ $json.formatDistribution }}",
+            "Generated Brief": "={{ $json.generatedBrief }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "append-weekly-patterns",
+      "name": "Append to Weekly Patterns",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        3320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1ye1nbaT4GyREOJsWuiXVavc_nvXHcDMLU7hqwCqapqY",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Tracker",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Last Run Date": "={{ $now.toISO() }}",
+            "Last Post ID Analyzed": "={{ $('Calculate Performance Metrics').first().json.postId }}",
+            "Posts Added This Run": "={{ $('Calculate Performance Metrics').all().length }}"
+          }
+        },
+        "options": {
+          "range": "A2:C2"
+        }
+      },
+      "id": "update-tracker",
+      "name": "Update Tracker",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        3540,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Every Monday 9 AM": {
+      "main": [
+        [
+          {
+            "node": "Read Tracker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Tracker": {
+      "main": [
+        [
+          {
+            "node": "Calculate Date Range",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Date Range": {
+      "main": [
+        [
+          {
+            "node": "Get Page Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Page Posts": {
+      "main": [
+        [
+          {
+            "node": "Filter Only New Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Only New Posts": {
+      "main": [
+        [
+          {
+            "node": "Get Post Insights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Post Insights": {
+      "main": [
+        [
+          {
+            "node": "Calculate Performance Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Performance Metrics": {
+      "main": [
+        [
+          {
+            "node": "IF Has Engagement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Has Engagement": {
+      "main": [
+        [
+          {
+            "node": "IF Is Video",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append to Post Performance Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Is Video": {
+      "main": [
+        [
+          {
+            "node": "Get Video Source",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Video Source": {
+      "main": [
+        [
+          {
+            "node": "AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Analysis": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Analysis": {
+      "main": [
+        [
+          {
+            "node": "Append to AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append to Post Performance Data": {
+      "main": [
+        [
+          {
+            "node": "Generate Weekly Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Weekly Summary": {
+      "main": [
+        [
+          {
+            "node": "Append to Weekly Patterns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append to Weekly Patterns": {
+      "main": [
+        [
+          {
+            "node": "Update Tracker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-12-22T00:00:00.000Z",
+  "versionId": "1"
+}
