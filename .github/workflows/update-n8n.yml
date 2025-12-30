@@ -55,8 +55,9 @@ jobs:
           }')
           
           # Update workflow via N8N REST API (Railway uses /rest/workflows endpoint)
+          # N8N uses PATCH for updates, not PUT
           echo "Sending request to: ${N8N_BASE_URL}/rest/workflows/${N8N_WORKFLOW_ID}"
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X PATCH \
             -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
             -H "Content-Type: application/json" \
             -d "${WORKFLOW_JSON}" \
